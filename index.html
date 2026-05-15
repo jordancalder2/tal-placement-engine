@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TAL Placement Engine — Tilting Futures</title>
+  <style>
+    /* ── Variables ─────────────────────────────── */
+    :root {
+      --purple:    #4627A3;
+      --purple-dk: #341d7a;
+      --purple-lt: #ede9f8;
+      --coral:     #FF5B56;
+      --coral-lt:  #fff0ef;
+      --teal:      #56BDA2;
+      --teal-lt:   #eaf7f3;
+      --teal-dk:   #3d9e87;
+      --g50:  #f8f9fa;
+      --g100: #f0f2f5;
+      --g200: #e2e8f0;
+      --g400: #94a3b8;
+      --g600: #475569;
+      --g800: #1e293b;
+      --white: #ffffff;
+      --sh:  0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
+      --shm: 0 4px 6px -1px rgba(0,0,0,.10), 0 2px 4px -1px rgba(0,0,0,.06);
+      --r: 8px;
+      --rl: 12px;
+      --sidebar-w: 220px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: var(--g50); color: var(--g800); height: 100vh; overflow: hidden; }
+
+    /* ── App shell ──────────────────────────────── */
+    #app { display: flex; height: 100vh; }
+
+    /* ── Sidebar ────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--purple);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .brand {
+      padding: 1.25rem 1rem 1rem;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+    .brand-name {
+      display: block;
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.55);
+      margin-bottom: 4px;
+    }
+    .brand-product {
+      display: block;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.25;
+    }
+    .brand-sub {
+      display: block;
+      font-size: .72rem;
+      color: rgba(255,255,255,.5);
+      margin-top: 2px;
+    }
+    nav { padding: .75rem .5rem; flex: 1; }
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      padding: .6rem .75rem;
+      border: none;
+      background: none;
+      color: rgba(255,255,255,.7);
+      font-size: .875rem;
+      font-weight: 500;
+      border-radius: var(--r);
+      cursor: pointer;
+      text-align: left;
+      transition: background .13s, color .13s;
+      margin-bottom: 2px;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,.1); color: var(--white); }
+    .nav-btn.active { background: rgba(255,255,255,.15); color: var(--white); }
+    .nav-btn .nav-icon { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
+    .nav-count {
+      margin-left: auto;
+      background: rgba(255,255,255,.18);
+      color: rgba(255,255,255,.8);
+      font-size: .65rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 20px;
+      min-width: 20px;
+      text-align: center;
+    }
+    .sidebar-footer {
+      padding: .875rem 1rem;
+      border-top: 1px solid rgba(255,255,255,.12);
+    }
+    .sidebar-footer label {
+      display: block;
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.5);
+      margin-bottom: 6px;
+    }
+    .sidebar-footer input {
+      width: 100%;
+      padding: .45rem .6rem;
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 6px;
+      color: var(--white);
+      font-size: .78rem;
+      font-family: 'SF Mono', monospace;
+    }
+    .sidebar-footer input::placeholder { color: rgba(255,255,255,.35); }
+    .sidebar-footer input:focus { outline: none; border-color: rgba(255,255,255,.45); background: rgba(255,255,255,.15); }
+    .key-hint { font-size: .65rem; color: rgba(255,255,255,.38); margin-top: 5px; }
+
+    /* ── Main area ──────────────────────────────── */
+    #main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* ── Panels ─────────────────────────────────── */
+    .panel { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+    .panel.active { display: flex; }
+    .panel-inner { padding: 1.75rem 2rem; flex: 1; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .panel-header h1 { font-size: 1.35rem; font-weight: 700; flex: 1; }
+    .panel-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+    /* ── Cards ──────────────────────────────────── */
+    .card {
+      background: var(--white);
+      border-radius: var(--rl);
+      box-shadow: var(--sh);
+      padding: 1rem 1.125rem;
+      margin-bottom: .875rem;
+    }
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: .5rem;
+    }
+    .card-title { font-size: .95rem; font-weight: 600; }
+    .card-desc { font-size: .82rem; color: var(--g600); line-height: 1.5; margin-bottom: .5rem; }
+    .card-actions { display: flex; gap: .375rem; flex-shrink: 0; }
+    .card-meta { font-size: .75rem; color: var(--g400); }
+
+    /* ── Buttons ────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: .5rem 1rem;
+      border: none; border-radius: var(--r);
+      font-size: .85rem; font-weight: 600; cursor: pointer;
+      transition: background .13s, box-shadow .13s, transform .1s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: none; }
+    .btn-primary { background: var(--purple); color: var(--white); }
+    .btn-primary:hover { background: var(--purple-dk); }
+    .btn-teal { background: var(--teal); color: var(--white); }
+    .btn-teal:hover { background: var(--teal-dk); }
+    .btn-ghost {
+      background: var(--white); color: var(--g600);
+      border: 1px solid var(--g200);
+    }
+    .btn-ghost:hover { border-color: var(--g400); color: var(--g800); }
+    .btn-danger-ghost { background: var(--white); color: var(--coral); border: 1px solid #ffd0cf; }
+    .btn-danger-ghost:hover { background: var(--coral-lt); }
+    .btn-sm {
+      padding: .3rem .7rem;
+      font-size: .77rem; border-radius: 6px;
+      background: var(--g100); color: var(--g600);
+      border: 1px solid var(--g200); cursor: pointer;
+      font-weight: 500;
+      transition: background .12s;
+    }
+    .btn-sm:hover { background: var(--g200); }
+    .btn-icon {
+      padding: .25rem .5rem;
+      font-size: .75rem; border-radius: 6px;
+      background: none; border: 1px solid var(--g200);
+      color: var(--g600); cursor: pointer;
+      transition: background .12s;
+    }
+    .btn-icon:hover { background: var(--g100); }
+    .btn-icon.danger { color: var(--coral); border-color: #ffd0cf; }
+    .btn-icon.danger:hover { background: var(--coral-lt); }
+    .btn-tiny {
+      padding: 0 5px; line-height: 18px; font-size: .75rem;
+      background: none; border: none; color: var(--g400);
+      cursor: pointer; border-radius: 4px;
+    }
+    .btn-tiny:hover { background: var(--g100); color: var(--coral); }
+
+    /* ── Badges ─────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 2px 9px; border-radius: 20px;
+      font-size: .7rem; font-weight: 600;
+    }
+    .badge-purple { background: var(--purple-lt); color: var(--purple); }
+    .badge-coral  { background: var(--coral-lt);  color: var(--coral);  }
+    .badge-teal   { background: var(--teal-lt);   color: var(--teal-dk);}
+    .badge-gray   { background: var(--g100);      color: var(--g600);   }
+    .badge-sm { font-size: .63rem; padding: 1px 7px; }
+
+    /* ── Forms ──────────────────────────────────── */
+    .form-group { margin-bottom: .875rem; }
+    .form-group label {
+      display: block;
+      font-size: .78rem; font-weight: 600; color: var(--g600);
+      margin-bottom: 5px;
+    }
+    .form-group input[type="text"],
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: .5rem .75rem;
+      border: 1px solid var(--g200);
+      border-radius: var(--r);
+      font-size: .875rem;
+      font-family: inherit;
+      background: var(--white);
+      color: var(--g800);
+      transition: border-color .13s;
+    }
+    .form-group input[type="text"]:focus,
+    .form-group textarea:focus { outline: none; border-color: var(--purple); }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .form-check { display: flex; align-items: center; gap: 8px; padding: .25rem 0; }
+    .form-check input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--coral); cursor: pointer; }
+    .form-check label { font-size: .875rem; color: var(--g800); cursor: pointer; margin: 0; font-weight: 400; }
+    .form-hint { font-size: .72rem; color: var(--g400); margin-top: 4px; }
+
+    /* ── Modal ──────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--white);
+      border-radius: var(--rl);
+      box-shadow: 0 20px 40px rgba(0,0,0,.2);
+      width: 100%;
+      max-width: 580px;
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-head {
+      padding: 1.125rem 1.5rem;
+      border-bottom: 1px solid var(--g200);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0;
+      background: var(--white);
+      z-index: 1;
+    }
+    .modal-head h2 { font-size: 1rem; font-weight: 700; }
+    .modal-close {
+      background: none; border: none;
+      font-size: 1.25rem; color: var(--g400);
+      cursor: pointer; padding: .25rem; border-radius: 4px;
+    }
+    .modal-close:hover { color: var(--g800); background: var(--g100); }
+    .modal-body { padding: 1.25rem 1.5rem; }
+    .modal-foot {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--g200);
+      display: flex;
+      gap: .5rem;
+      justify-content: flex-end;
+      background: var(--white);
+      position: sticky; bottom: 0;
+    }
+    .pdf-upload-row {
+      display: flex; align-items: center; gap: .5rem;
+      padding: .5rem .75rem;
+      background: var(--g50);
+      border: 1px dashed var(--g200);
+      border-radius: var(--r);
+      font-size: .8rem; color: var(--g600);
+    }
+    .pdf-upload-row input[type="file"] { display: none; }
+
+    /* ── Loading overlay ────────────────────────── */
+    #loading-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(70,39,163,.55);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid rgba(255,255,255,.25);
+      border-top-color: var(--white);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-msg { color: var(--white); font-size: .95rem; font-weight: 500; }
+
+    /* ── Toast ──────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      background: var(--g800); color: var(--white);
+      padding: .625rem 1.125rem;
+      border-radius: var(--r);
+      font-size: .875rem; font-weight: 500;
+      box-shadow: var(--shm);
+      opacity: 0; transform: translateY(8px);
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+      z-index: 300;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+
+    /* ── Empty state ────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--g400);
+      font-size: .875rem;
+    }
+    .empty-state-icon { font-size: 2rem; margin-bottom: .5rem; }
+
+    /* ── NGO Library ────────────────────────────── */
+    .ngo-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: .5rem; }
+
+    /* ── Students panel ─────────────────────────── */
+    .student-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: .875rem;
+    }
+    .student-card { margin-bottom: 0; }
+    .student-status { display: flex; gap: 5px; margin-top: .5rem; align-items: center; }
+
+    /* ── Results panel ──────────────────────────── */
+    .result-block {
+      background: var(--white);
+      border-radius: var(--rl);
+      box-shadow: var(--sh);
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    .result-student-head {
+      padding: .875rem 1.125rem;
+      background: var(--purple);
+      color: var(--white);
+      font-weight: 700;
+      font-size: .95rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+    .result-student-head:hover { background: var(--purple-dk); }
+    .result-student-head .chev { transition: transform .2s; }
+    .result-block.open .result-student-head .chev { transform: rotate(180deg); }
+    .result-rankings { display: none; }
+    .result-block.open .result-rankings { display: block; }
+    .ranking-row {
+      padding: .75rem 1.125rem;
+      border-bottom: 1px solid var(--g100);
+      display: grid;
+      grid-template-columns: 30px 1fr auto auto;
+      gap: 8px;
+      align-items: start;
+    }
+    .ranking-row:last-child { border-bottom: none; }
+    .rank-num {
+      font-size: .7rem; font-weight: 700;
+      color: var(--g400);
+      padding-top: 2px;
+    }
+    .rank-details { min-width: 0; }
+    .rank-ngo-name { font-size: .875rem; font-weight: 600; margin-bottom: 4px; }
+    .rank-reasons { font-size: .78rem; color: var(--g600); line-height: 1.5; }
+    .rank-reason { margin-bottom: 2px; }
+    .score-chip {
+      font-size: .85rem; font-weight: 700;
+      padding: 3px 10px; border-radius: 20px;
+      align-self: start;
+    }
+    .score-high   { background: var(--teal-lt);  color: var(--teal-dk); }
+    .score-mid    { background: #fef9c3;          color: #92400e; }
+    .score-low    { background: var(--coral-lt);  color: var(--coral); }
+
+    /* ── Group Placement ────────────────────────── */
+    .placement-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: .875rem;
+      margin-bottom: 1.5rem;
+    }
+    .placement-ngo-card {
+      background: var(--white);
+      border-radius: var(--rl);
+      box-shadow: var(--sh);
+      padding: .875rem 1rem;
+      border-top: 3px solid var(--purple);
+    }
+    .placement-ngo-card.full { border-top-color: var(--teal); }
+    .placement-ngo-card.empty-slot { border-top-color: var(--g200); }
+    .placement-ngo-name { font-size: .875rem; font-weight: 700; margin-bottom: 6px; }
+    .assigned-slot {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--teal-lt);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: .78rem; font-weight: 500; color: var(--teal-dk);
+      margin-bottom: 4px;
+    }
+    .assign-select {
+      width: 100%; margin-top: 4px;
+      padding: .35rem .5rem;
+      border: 1px dashed var(--g200);
+      border-radius: 6px;
+      font-size: .75rem; color: var(--g600);
+      background: var(--g50); cursor: pointer;
+    }
+    .assign-select:focus { outline: none; border-color: var(--purple); }
+    .unassigned-section {
+      background: var(--coral-lt);
+      border: 1px solid #ffd0cf;
+      border-radius: var(--r);
+      padding: .875rem 1rem;
+    }
+    .unassigned-section h3 { font-size: .875rem; font-weight: 700; color: var(--coral); margin-bottom: .625rem; }
+    .unassigned-list { display: flex; gap: .5rem; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ───────────────────────────── -->
+  <aside id="sidebar">
+    <div class="brand">
+      <span class="brand-name">Tilting Futures</span>
+      <span class="brand-product">TAL Placement<br>Engine</span>
+    </div>
+
+    <nav>
+      <button class="nav-btn active" data-panel="ngos" onclick="showPanel('ngos')">
+        <span class="nav-icon">🏛</span> NGO Library
+        <span class="nav-count" id="cnt-ngos">0</span>
+      </button>
+      <button class="nav-btn" data-panel="students" onclick="showPanel('students')">
+        <span class="nav-icon">🎓</span> Match Students
+        <span class="nav-count" id="cnt-students">0</span>
+      </button>
+      <button class="nav-btn" data-panel="results" onclick="showPanel('results')">
+        <span class="nav-icon">📊</span> Results
+      </button>
+      <button class="nav-btn" data-panel="placement" onclick="showPanel('placement')">
+        <span class="nav-icon">📌</span> Group Placement
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <label for="api-key-input">Anthropic API Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-api03-…" autocomplete="off" />
+      <p class="key-hint">Stored in localStorage only</p>
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────── -->
+  <div id="main">
+
+    <!-- NGO Library -->
+    <div id="panel-ngos" class="panel active">
+      <div class="panel-inner">
+        <div class="panel-header">
+          <h1>NGO Library</h1>
+          <div class="panel-actions">
+            <button class="btn btn-ghost" onclick="importNgoCsv()">⬆ Import CSV</button>
+            <button class="btn btn-primary" onclick="openNgoModal(null)">+ Add NGO</button>
+          </div>
+        </div>
+        <div id="ngo-list"></div>
+      </div>
+    </div>
+
+    <!-- Match Students -->
+    <div id="panel-students" class="panel">
+      <div class="panel-inner">
+        <div class="panel-header">
+          <h1>Match Students</h1>
+          <div class="panel-actions">
+            <button class="btn btn-ghost" onclick="clearStudents()">🗑 Clear All</button>
+            <button class="btn btn-primary" onclick="uploadQuestionnaireCsv()">⬆ Upload Questionnaire CSV</button>
+          </div>
+        </div>
+        <div id="student-list"></div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="panel-results" class="panel">
+      <div class="panel-inner">
+        <div class="panel-header">
+          <h1>Results</h1>
+          <div class="panel-actions">
+            <button class="btn btn-teal" onclick="runMatching()">▶ Run AI Matching</button>
+          </div>
+        </div>
+        <div id="results-content"></div>
+      </div>
+    </div>
+
+    <!-- Group Placement -->
+    <div id="panel-placement" class="panel">
+      <div class="panel-inner">
+        <div class="panel-header">
+          <h1>Group Placement</h1>
+          <div class="panel-actions">
+            <button class="btn btn-ghost" onclick="exportPlacement()">⬇ Export CSV</button>
+            <button class="btn btn-primary" onclick="generatePlacement()">⚡ Generate Placement</button>
+          </div>
+        </div>
+        <div id="placement-content"></div>
+      </div>
+    </div>
+
+  </div><!-- /#main -->
+</div><!-- /#app -->
+
+<!-- ── NGO Modal ─────────────────────────── -->
+<div id="ngo-modal" class="modal-overlay" onclick="modalOverlayClick(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="ngo-modal-title">Add NGO</h2>
+      <button class="modal-close" onclick="closeNgoModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="ngo-form" onsubmit="saveNgoForm(event)">
+        <div class="form-group">
+          <label>NGO Name *</label>
+          <input type="text" id="ngo-name" required placeholder="e.g. Rape Crisis Cape Town Trust" />
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="ngo-description" placeholder="What does this organisation do?" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Student Roles</label>
+          <textarea id="ngo-roles" placeholder="What will students do day-to-day? What skills or backgrounds are needed?" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Human Rights Connection</label>
+          <textarea id="ngo-hr" placeholder="How does this placement connect to human rights themes?" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Work Plan</label>
+          <textarea id="ngo-workplan" placeholder="Paste work plan text here, or extract from PDF below." rows="4"></textarea>
+          <div class="pdf-upload-row" style="margin-top:8px">
+            <span>📄</span>
+            <span style="flex:1;font-size:.78rem;color:var(--g600)">Extract from PDF work plan</span>
+            <input type="file" id="workplan-pdf-input" accept=".pdf" onchange="uploadWorkPlanPDF(this)" />
+            <button type="button" class="btn-sm" onclick="document.getElementById('workplan-pdf-input').click()">Choose PDF</button>
+          </div>
+          <p class="form-hint">Claude will extract and summarise the work plan from the PDF.</p>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" id="ngo-maturity" />
+          <label for="ngo-maturity">Maturity-sensitive placement (trauma, GBV, sensitive content)</label>
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeNgoModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="document.getElementById('ngo-form').requestSubmit()">Save NGO</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Loading overlay ───────────────────── -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div id="loading-msg">Working…</div>
+</div>
+
+<!-- ── Toast ─────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   STORAGE
+═══════════════════════════════════════════ */
+const KEYS = {
+  ngos:      'tal_ngos',
+  students:  'tal_students',
+  results:   'tal_results',
+  placement: 'tal_placement',
+};
+
+function dbLoad(key, def = null) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; }
+  catch { return def; }
+}
+function dbSave(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+function getApiKey() { return localStorage.getItem('tal_api_key') || ''; }
+function saveApiKey(k) { localStorage.setItem('tal_api_key', k); }
+
+/* ═══════════════════════════════════════════
+   NAVIGATION
+═══════════════════════════════════════════ */
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  document.querySelector(`.nav-btn[data-panel="${id}"]`).classList.add('active');
+  // Refresh the panel we're navigating to
+  if (id === 'ngos')      renderNgoList();
+  if (id === 'students')  renderStudentList();
+  if (id === 'results')   renderResults();
+  if (id === 'placement') renderPlacement();
+}
+
+function updateCounts() {
+  document.getElementById('cnt-ngos').textContent     = (dbLoad(KEYS.ngos, [])).length;
+  document.getElementById('cnt-students').textContent = (dbLoad(KEYS.students, [])).length;
+}
+
+/* ═══════════════════════════════════════════
+   NGO LIBRARY
+═══════════════════════════════════════════ */
+let _editingNgoId = null;
+
+function renderNgoList() {
+  const ngos = dbLoad(KEYS.ngos, []);
+  const el = document.getElementById('ngo-list');
+  updateCounts();
+  if (!ngos.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">🏛</div>
+      <div>No NGOs yet. Add one manually or import from CSV.</div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = ngos.map(n => `
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">${esc(n.name)}</div>
+          <div class="ngo-tags">
+            ${n.maturitySensitive ? '<span class="badge badge-coral">Maturity Sensitive</span>' : ''}
+            ${n.workPlan ? '<span class="badge badge-teal">Work plan loaded</span>' : ''}
+            ${n.hrConnection ? '<span class="badge badge-purple">HR Connection</span>' : ''}
+          </div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-icon" onclick="openNgoModal('${n.id}')">Edit</button>
+          <button class="btn-icon danger" onclick="deleteNgo('${n.id}')">Delete</button>
+        </div>
+      </div>
+      ${n.description ? `<p class="card-desc">${esc(n.description.slice(0, 180))}${n.description.length > 180 ? '…' : ''}</p>` : ''}
+      ${n.studentRoles ? `<p class="card-meta"><strong>Roles:</strong> ${esc(n.studentRoles.slice(0, 120))}${n.studentRoles.length > 120 ? '…' : ''}</p>` : ''}
+    </div>
+  `).join('');
+}
+
+function openNgoModal(id) {
+  _editingNgoId = id;
+  const ngo = id ? (dbLoad(KEYS.ngos, []).find(n => n.id === id) || null) : null;
+  document.getElementById('ngo-modal-title').textContent = ngo ? 'Edit NGO' : 'Add NGO';
+  document.getElementById('ngo-name').value         = ngo?.name        || '';
+  document.getElementById('ngo-description').value  = ngo?.description || '';
+  document.getElementById('ngo-roles').value        = ngo?.studentRoles || '';
+  document.getElementById('ngo-hr').value           = ngo?.hrConnection || '';
+  document.getElementById('ngo-workplan').value     = ngo?.workPlan     || '';
+  document.getElementById('ngo-maturity').checked   = ngo?.maturitySensitive || false;
+  document.getElementById('workplan-pdf-input').value = '';
+  document.getElementById('ngo-modal').classList.add('open');
+  setTimeout(() => document.getElementById('ngo-name').focus(), 50);
+}
+
+function closeNgoModal() {
+  document.getElementById('ngo-modal').classList.remove('open');
+  _editingNgoId = null;
+}
+
+function modalOverlayClick(e) {
+  if (e.target === document.getElementById('ngo-modal')) closeNgoModal();
+}
+
+function saveNgoForm(e) {
+  e.preventDefault();
+  const ngo = {
+    id:               _editingNgoId || crypto.randomUUID(),
+    name:             document.getElementById('ngo-name').value.trim(),
+    description:      document.getElementById('ngo-description').value.trim(),
+    studentRoles:     document.getElementById('ngo-roles').value.trim(),
+    hrConnection:     document.getElementById('ngo-hr').value.trim(),
+    workPlan:         document.getElementById('ngo-workplan').value.trim(),
+    maturitySensitive: document.getElementById('ngo-maturity').checked,
+  };
+  const ngos = dbLoad(KEYS.ngos, []);
+  const idx = ngos.findIndex(n => n.id === ngo.id);
+  if (idx >= 0) ngos[idx] = ngo; else ngos.push(ngo);
+  dbSave(KEYS.ngos, ngos);
+  closeNgoModal();
+  renderNgoList();
+  toast(`NGO "${ngo.name}" saved`);
+}
+
+function deleteNgo(id) {
+  const ngos = dbLoad(KEYS.ngos, []);
+  const ngo = ngos.find(n => n.id === id);
+  if (!confirm(`Delete "${ngo?.name}"?`)) return;
+  dbSave(KEYS.ngos, ngos.filter(n => n.id !== id));
+  renderNgoList();
+  toast('NGO deleted');
+}
+
+async function uploadWorkPlanPDF(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!requireApiKey()) return;
+  showLoading('Extracting work plan from PDF…');
+  try {
+    const b64 = await fileToBase64Strip(file);
+    const res = await claudeCall({ action: 'extract_pdf', pdf_base64: b64, filename: file.name,
+      instruction: 'Extract all key information from this NGO work plan: objectives, activities, student roles, timeline, requirements, focus areas.' });
+    document.getElementById('ngo-workplan').value = res.text;
+    toast('Work plan extracted');
+  } catch (err) {
+    showErr(err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function importNgoCsv() {
+  pickFile('.csv', file => {
+    readText(file, text => {
+      const rows = parseCSV(text);
+      if (!rows.length) return showErr('CSV appears empty or invalid.');
+      const ngos = dbLoad(KEYS.ngos, []);
+      let added = 0;
+      rows.forEach(row => {
+        const name = row.name || row.Name || row.NGO || row.ngo || '';
+        if (!name.trim()) return;
+        ngos.push({
+          id: crypto.randomUUID(),
+          name:             (name).trim(),
+          description:      col(row, 'description', 'Description', 'desc'),
+          studentRoles:     col(row, 'student_roles', 'studentRoles', 'roles', 'Roles', 'Student Roles'),
+          hrConnection:     col(row, 'hr_connection', 'hrConnection', 'human_rights', 'Human Rights Connection'),
+          workPlan:         col(row, 'work_plan', 'workPlan', 'Work Plan'),
+          maturitySensitive: ['true','yes','1','y'].includes(String(col(row, 'maturity_sensitive', 'maturitySensitive', 'maturity')).toLowerCase()),
+        });
+        added++;
+      });
+      dbSave(KEYS.ngos, ngos);
+      renderNgoList();
+      toast(`Imported ${added} NGO${added !== 1 ? 's' : ''}`);
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════
+   STUDENTS
+═══════════════════════════════════════════ */
+function renderStudentList() {
+  const students = dbLoad(KEYS.students, []);
+  const el = document.getElementById('student-list');
+  updateCounts();
+  if (!students.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">🎓</div>
+      <div>No students loaded. Upload a questionnaire CSV to get started.</div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `<div class="student-grid">${students.map(s => `
+    <div class="card student-card">
+      <div class="card-head">
+        <div class="card-title">${esc(s._name || 'Unnamed Student')}</div>
+        <div class="card-actions">
+          <button class="btn-icon danger" onclick="deleteStudent('${s.id}')">×</button>
+        </div>
+      </div>
+      ${s._email ? `<p class="card-meta">${esc(s._email)}</p>` : ''}
+      <div class="student-status">
+        ${s.resumeText
+          ? '<span class="badge badge-teal">✓ Resume loaded</span>'
+          : '<span class="badge badge-gray">No resume</span>'}
+      </div>
+      <div style="margin-top:.625rem">
+        <button class="btn-sm" onclick="uploadResume('${s.id}')">
+          ${s.resumeText ? '↺ Replace Resume PDF' : '⬆ Upload Resume PDF'}
+        </button>
+      </div>
+    </div>
+  `).join('')}</div>`;
+}
+
+function uploadQuestionnaireCsv() {
+  pickFile('.csv', file => {
+    readText(file, text => {
+      const rows = parseCSV(text);
+      if (!rows.length) return showErr('CSV appears empty or invalid.');
+      const students = rows.map(row => {
+        // Find name intelligently
+        const name = row['name'] || row['Name'] || row['Full Name'] || row['full_name'] || row['Student Name'] ||
+          ([(row['First Name'] || row['first_name'] || ''), (row['Last Name'] || row['last_name'] || '')].join(' ').trim()) ||
+          row['Email'] || row['email'] || 'Unknown';
+        const email = row['Email'] || row['email'] || row['Email Address'] || '';
+        // Keep all original CSV columns so Claude sees the full questionnaire
+        return { id: crypto.randomUUID(), _name: name.trim(), _email: email.trim(), resumeText: '', ...row };
+      });
+      dbSave(KEYS.students, students);
+      renderStudentList();
+      toast(`Loaded ${students.length} student${students.length !== 1 ? 's' : ''}`);
+    });
+  });
+}
+
+async function uploadResume(studentId) {
+  if (!requireApiKey()) return;
+  pickFile('.pdf', async file => {
+    showLoading(`Extracting resume…`);
+    try {
+      const b64 = await fileToBase64Strip(file);
+      const res = await claudeCall({ action: 'extract_pdf', pdf_base64: b64, filename: file.name,
+        instruction: 'Extract all relevant information from this student resume: education, skills, experience, interests, projects, and any other details useful for NGO placement.' });
+      const students = dbLoad(KEYS.students, []);
+      const idx = students.findIndex(s => s.id === studentId);
+      if (idx >= 0) {
+        students[idx].resumeText = res.text;
+        dbSave(KEYS.students, students);
+        renderStudentList();
+        toast('Resume extracted and saved');
+      }
+    } catch (err) {
+      showErr(err.message);
+    } finally {
+      hideLoading();
+    }
+  });
+}
+
+function deleteStudent(id) {
+  const students = dbLoad(KEYS.students, []).filter(s => s.id !== id);
+  dbSave(KEYS.students, students);
+  renderStudentList();
+  toast('Student removed');
+}
+
+function clearStudents() {
+  if (!confirm('Remove all students? This cannot be undone.')) return;
+  dbSave(KEYS.students, []);
+  renderStudentList();
+  toast('All students cleared');
+}
+
+/* ═══════════════════════════════════════════
+   RESULTS
+═══════════════════════════════════════════ */
+async function runMatching() {
+  const students = dbLoad(KEYS.students, []);
+  const ngos = dbLoad(KEYS.ngos, []);
+  if (!requireApiKey()) return;
+  if (!students.length) return showErr('No students loaded. Upload a questionnaire CSV first.');
+  if (!ngos.length) return showErr('No NGOs in the library. Add some NGOs first.');
+
+  showLoading(`Matching ${students.length} students against ${ngos.length} NGOs — this may take a minute…`);
+  try {
+    const result = await claudeCall({ action: 'match', students, ngos });
+    dbSave(KEYS.results, result);
+    renderResults();
+    showPanel('results');
+    toast('Matching complete');
+  } catch (err) {
+    showErr(err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderResults() {
+  const results  = dbLoad(KEYS.results, null);
+  const students = dbLoad(KEYS.students, []);
+  const ngos     = dbLoad(KEYS.ngos, []);
+  const el = document.getElementById('results-content');
+
+  if (!results || !results.matches?.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">📊</div>
+      <div>No results yet. Load students &amp; NGOs, then click <strong>Run AI Matching</strong>.</div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = results.matches.map((m, mi) => {
+    const student = students.find(s => s.id === m.studentId);
+    const name = student?._name || m.studentId;
+    const blockId = `rb-${mi}`;
+    return `
+      <div class="result-block" id="${blockId}">
+        <div class="result-student-head" onclick="toggleResult('${blockId}')">
+          <span>${esc(name)}</span>
+          <span class="chev">▼</span>
+        </div>
+        <div class="result-rankings">
+          ${(m.ngoRankings || []).map((r, i) => {
+            const ngo = ngos.find(n => n.id === r.ngoId);
+            const ngoName = ngo?.name || r.ngoId;
+            const scoreCls = r.score >= 75 ? 'score-high' : r.score >= 55 ? 'score-mid' : 'score-low';
+            return `
+              <div class="ranking-row">
+                <span class="rank-num">#${i+1}</span>
+                <div class="rank-details">
+                  <div class="rank-ngo-name">
+                    ${esc(ngoName)}
+                    ${ngo?.maturitySensitive ? '&nbsp;<span class="badge badge-coral badge-sm">M</span>' : ''}
+                  </div>
+                  <div class="rank-reasons">
+                    ${(r.reasons || []).map(reason => `<div class="rank-reason">• ${esc(reason)}</div>`).join('')}
+                  </div>
+                </div>
+                <span></span>
+                <span class="score-chip ${scoreCls}">${r.score}</span>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Auto-open first result
+  const first = document.getElementById('rb-0');
+  if (first) first.classList.add('open');
+}
+
+function toggleResult(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+/* ═══════════════════════════════════════════
+   GROUP PLACEMENT
+═══════════════════════════════════════════ */
+function generatePlacement() {
+  const results  = dbLoad(KEYS.results, null);
+  const students = dbLoad(KEYS.students, []);
+  const ngos     = dbLoad(KEYS.ngos, []);
+
+  if (!results) return showErr('Run AI Matching first before generating a placement.');
+
+  // Build assignments map: ngoId -> []
+  const assignments = {};
+  ngos.forEach(n => { assignments[n.id] = []; });
+  const unassigned = [];
+
+  // Sort students: highest top-score first (most certain placements get first pick)
+  const ranked = [...results.matches].sort(
+    (a, b) => (b.ngoRankings[0]?.score || 0) - (a.ngoRankings[0]?.score || 0)
+  );
+
+  for (const m of ranked) {
+    let placed = false;
+    for (const r of (m.ngoRankings || []).slice(0, 3)) {
+      if (assignments[r.ngoId] && assignments[r.ngoId].length < 2) {
+        assignments[r.ngoId].push(m.studentId);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) unassigned.push(m.studentId);
+  }
+
+  dbSave(KEYS.placement, { assignments, unassigned });
+  renderPlacement();
+  toast('Placement generated');
+}
+
+function renderPlacement() {
+  const placement = dbLoad(KEYS.placement, null);
+  const students  = dbLoad(KEYS.students, []);
+  const ngos      = dbLoad(KEYS.ngos, []);
+  const results   = dbLoad(KEYS.results, null);
+  const el = document.getElementById('placement-content');
+
+  if (!placement) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">📌</div>
+      <div>Run <strong>AI Matching</strong> first, then click <strong>Generate Placement</strong>.</div>
+    </div>`;
+    return;
+  }
+
+  const { assignments, unassigned } = placement;
+  const studentName = id => (students.find(s => s.id === id)?._name || id);
+
+  // Build unassigned options for selects
+  const unassignedOptions = unassigned.map(sid =>
+    `<option value="${sid}">${esc(studentName(sid))}</option>`
+  ).join('');
+
+  const ngoCards = ngos.map(ngo => {
+    const assigned = assignments[ngo.id] || [];
+    const isFull = assigned.length >= 2;
+    const cls = isFull ? 'full' : assigned.length === 0 ? 'empty-slot' : '';
+    return `
+      <div class="placement-ngo-card ${cls}">
+        <div class="placement-ngo-name">${esc(ngo.name)}</div>
+        ${ngo.maturitySensitive ? '<span class="badge badge-coral badge-sm" style="margin-bottom:6px">Maturity Sensitive</span>' : ''}
+        <div style="margin-top:6px">
+          ${assigned.map(sid => `
+            <div class="assigned-slot">
+              <span>${esc(studentName(sid))}</span>
+              <button class="btn-tiny" onclick="unassignStudent('${ngo.id}','${sid}')" title="Remove">×</button>
+            </div>
+          `).join('')}
+          ${!isFull && unassigned.length > 0 ? `
+            <select class="assign-select" onchange="manualAssign('${ngo.id}', this)">
+              <option value="">+ Assign student…</option>
+              ${unassignedOptions}
+            </select>` : ''}
+          ${!isFull && unassigned.length === 0 && assigned.length === 0 ? `<div style="font-size:.72rem;color:var(--g400);margin-top:4px">No unassigned students</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  let html = `<div class="placement-grid">${ngoCards}</div>`;
+
+  if (unassigned.length > 0) {
+    html += `
+      <div class="unassigned-section">
+        <h3>⚠ Unplaced Students (${unassigned.length})</h3>
+        <div class="unassigned-list">
+          ${unassigned.map(sid => `<span class="badge badge-coral">${esc(studentName(sid))}</span>`).join('')}
+        </div>
+        <p style="font-size:.75rem;color:var(--coral);margin-top:.5rem">
+          These students could not be placed in any of their top 3 matches. Use the dropdowns above to assign them manually.
+        </p>
+      </div>`;
+  } else {
+    const totalAssigned = Object.values(assignments).flat().length;
+    if (totalAssigned > 0) {
+      html += `<div style="text-align:center;padding:1rem;font-size:.875rem;color:var(--teal-dk);font-weight:600">✓ All students placed</div>`;
+    }
+  }
+
+  el.innerHTML = html;
+}
+
+function unassignStudent(ngoId, studentId) {
+  const placement = dbLoad(KEYS.placement, null);
+  if (!placement) return;
+  placement.assignments[ngoId] = (placement.assignments[ngoId] || []).filter(id => id !== studentId);
+  placement.unassigned.push(studentId);
+  dbSave(KEYS.placement, placement);
+  renderPlacement();
+}
+
+function manualAssign(ngoId, select) {
+  const studentId = select.value;
+  if (!studentId) return;
+  const placement = dbLoad(KEYS.placement, null);
+  if (!placement) return;
+  if ((placement.assignments[ngoId] || []).length >= 2) {
+    showErr('This NGO already has 2 students assigned.');
+    select.value = '';
+    return;
+  }
+  placement.assignments[ngoId] = [...(placement.assignments[ngoId] || []), studentId];
+  placement.unassigned = placement.unassigned.filter(id => id !== studentId);
+  dbSave(KEYS.placement, placement);
+  renderPlacement();
+  toast('Student assigned');
+}
+
+function exportPlacement() {
+  const placement = dbLoad(KEYS.placement, null);
+  const students  = dbLoad(KEYS.students, []);
+  const ngos      = dbLoad(KEYS.ngos, []);
+  if (!placement) return showErr('No placement generated yet.');
+
+  const studentName = id => (students.find(s => s.id === id)?._name || id);
+  const rows = [['NGO', 'Student 1', 'Student 2', 'Maturity Sensitive']];
+
+  ngos.forEach(ngo => {
+    const assigned = placement.assignments[ngo.id] || [];
+    rows.push([ngo.name, studentName(assigned[0] || ''), studentName(assigned[1] || ''), ngo.maturitySensitive ? 'Yes' : 'No']);
+  });
+
+  if (placement.unassigned.length) {
+    rows.push(['UNPLACED', ...placement.unassigned.map(studentName)]);
+  }
+
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tal-placement.csv';
+  a.click();
+  toast('Placement exported');
+}
+
+/* ═══════════════════════════════════════════
+   CLAUDE API
+═══════════════════════════════════════════ */
+async function claudeCall(body) {
+  const apiKey = getApiKey();
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, apiKey }),
+  });
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+  return data;
+}
+
+/* ═══════════════════════════════════════════
+   UTILITIES
+═══════════════════════════════════════════ */
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const parseRow = line => {
+    const vals = []; let cur = '', inQ = false;
+    for (const c of line) {
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { vals.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    vals.push(cur.trim());
+    return vals;
+  };
+  const headers = parseRow(lines[0]);
+  return lines.slice(1).map(line => {
+    if (!line.trim()) return null;
+    const vals = parseRow(line);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h.trim()] = (vals[i] || '').trim(); });
+    return obj;
+  }).filter(Boolean);
+}
+
+// Returns the first matching key from a row object
+function col(row, ...keys) {
+  for (const k of keys) { if (k in row && row[k]) return row[k]; }
+  return '';
+}
+
+function fileToBase64Strip(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      // Strip "data:...;base64," prefix
+      resolve(e.target.result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function pickFile(accept, callback) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.onchange = e => { if (e.target.files[0]) callback(e.target.files[0]); };
+  input.click();
+}
+
+function readText(file, callback) {
+  const reader = new FileReader();
+  reader.onload = e => callback(e.target.result);
+  reader.readAsText(file);
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function requireApiKey() {
+  if (getApiKey()) return true;
+  showErr('Please enter your Anthropic API key in the sidebar first.');
+  return false;
+}
+
+function showLoading(msg) {
+  document.getElementById('loading-msg').textContent = msg || 'Working…';
+  document.getElementById('loading-overlay').style.display = 'flex';
+}
+function hideLoading() {
+  document.getElementById('loading-overlay').style.display = 'none';
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function showErr(msg) {
+  hideLoading();
+  // Use a styled inline alert rather than browser alert
+  const existing = document.getElementById('err-toast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'err-toast';
+  el.style.cssText = `position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
+    background:#fff;border:1px solid #fecaca;border-radius:8px;padding:.75rem 1.25rem;
+    color:#dc2626;font-size:.875rem;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);
+    z-index:400;max-width:480px;text-align:center;`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+/* ═══════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════ */
+document.getElementById('api-key-input').value = getApiKey();
+document.getElementById('api-key-input').addEventListener('change', e => saveApiKey(e.target.value.trim()));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeNgoModal();
+});
+
+// Initial render
+renderNgoList();
+renderStudentList();
+renderResults();
+renderPlacement();
+</script>
+</body>
+</html>
