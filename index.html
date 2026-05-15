@@ -911,7 +911,7 @@ async function uploadAllResumes() {
     const students = dbLoad(KEYS.students, []);
     let processed = 0;
     for (const file of files) {
-      const nameNoExt = file.name.replace(/\.pdf$/i, '').toLowerCase().replace(/[-_]/g, ' ').trim();
+      const nameNoExt = file.name.replace(/\.pdf$/i, '').replace(/\s*CV\s*$/i, '').replace(/[-_]/g, ' ').trim();
       const normalize = str => str.toLowerCase().replace(/[-_\.]/g,' ').replace(/\s+/g,' ').trim();
       const normFile = normalize(nameNoExt);
       const idx = students.findIndex(s => {
