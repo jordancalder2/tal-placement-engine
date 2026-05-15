@@ -543,6 +543,7 @@
         <div class="panel-header">
           <h1>Match Students</h1>
           <div class="panel-actions">
+            <button class="btn btn-ghost" onclick="uploadAllResumes()">📎 Upload All Resumes</button>
             <button class="btn btn-ghost" onclick="clearStudents()">🗑 Clear All</button>
             <button class="btn btn-primary" onclick="uploadQuestionnaireCsv()">⬆ Upload Questionnaire CSV</button>
           </div>
@@ -896,6 +897,38 @@ async function uploadResume(studentId) {
       hideLoading();
     }
   });
+}
+
+async function uploadAllResumes() {
+  if (!requireApiKey()) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf';
+  input.multiple = true;
+  input.onchange = async () => {
+    const files = Array.from(input.files);
+    if (!files.length) return;
+    const students = dbLoad(KEYS.students, []);
+    let processed = 0;
+    for (const file of files) {
+      const nameNoExt = file.name.replace(/\.pdf$/i, '').toLowerCase().replace(/[-_]/g, ' ').trim();
+      const idx = students.findIndex(s => (s._name||'').toLowerCase().replace(/[-_]/g,' ').trim().includes(nameNoExt) || nameNoExt.includes((s._name||'').toLowerCase().replace(/[-_]/g,' ').trim()));
+      if (idx < 0) { toast('No match for: ' + file.name); continue; }
+      showLoading('Extracting ' + (processed+1) + '/' + files.length + ': ' + file.name);
+      try {
+        const b64 = await fileToBase64Strip(file);
+        const res = await claudeCall({ action: 'extract_pdf', pdf_base64: b64, filename: file.name,
+          instruction: 'Extract all relevant information from this student resume: education, skills, experience, interests, projects, and any other details useful for NGO placement.' });
+        students[idx].resumeText = res.text;
+        processed++;
+      } catch(err) { toast('Failed: ' + file.name); }
+    }
+    dbSave(KEYS.students, students);
+    renderStudentList();
+    hideLoading();
+    toast(processed + ' resumes extracted and saved');
+  };
+  input.click();
 }
 
 function deleteStudent(id) {
