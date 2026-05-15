@@ -465,6 +465,25 @@
     }
     .unassigned-section h3 { font-size: .875rem; font-weight: 700; color: var(--coral); margin-bottom: .625rem; }
     .unassigned-list { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+    /* ── Student profile modal ──────────────── */
+    .student-card { cursor: pointer; }
+    .student-card:hover { box-shadow: var(--shm); }
+    .profile-section { margin-bottom: 1.25rem; }
+    .profile-section:last-child { margin-bottom: 0; }
+    .profile-section-title {
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--g400); margin-bottom: .625rem;
+      padding-bottom: .375rem; border-bottom: 1px solid var(--g100);
+    }
+    .profile-field { margin-bottom: .5rem; }
+    .profile-field .field-label { font-size: .72rem; font-weight: 600; color: var(--g600); margin-bottom: 2px; }
+    .profile-field .field-value { font-size: .85rem; color: var(--g800); line-height: 1.55; }
+    .resume-insights-box {
+      background: var(--purple-lt); border-radius: var(--r);
+      padding: .875rem 1rem; font-size: .82rem; color: var(--g800);
+      line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+    }
   </style>
 </head>
 <body>
@@ -593,7 +612,7 @@
           <div class="pdf-upload-row" style="margin-top:8px">
             <span>📄</span>
             <span style="flex:1;font-size:.78rem;color:var(--g600)">Extract from PDF work plan</span>
-            <input type="file" id="workplan-pdf-input" accept=".pdf" onchange="uploadWorkPlanPDF(this)" />
+            <input type="file" id="workplan-pdf-input" accept=".pdf" multiple onchange="uploadWorkPlanPDF(this)" />
             <button type="button" class="btn-sm" onclick="document.getElementById('workplan-pdf-input').click()">Choose PDF</button>
           </div>
           <p class="form-hint">Claude will extract and summarise the work plan from the PDF.</p>
@@ -1177,10 +1196,11 @@ function fileToBase64Strip(file) {
   });
 }
 
-function pickFile(accept, callback) {
+function pickFile(accept, callback, multiple = false) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = accept;
+  if (multiple) input.multiple = true;
   input.onchange = e => { if (e.target.files[0]) callback(e.target.files[0]); };
   input.click();
 }
