@@ -275,14 +275,23 @@ ngoRankings MUST contain all ${ngos.length} NGOs, sorted by score descending.`;
       let parsed;
       try {
         parsed = JSON.parse(text);
-      } catch {
+      } catch (parseErr) {
         return res.status(500).json({
-          error: 'Claude returned non-JSON output. Try again.',
+          error: 'JSON parse failed: ' + parseErr.message,
+          raw: text.slice(0, 1000),
+        });
+      }
+      
+      // Check response has expected structure
+      if (!parsed.studentId || !parsed.ngoRankings) {
+        return res.status(500).json({
+          error: 'Unexpected response structure',
+          keys: Object.keys(parsed),
           raw: text.slice(0, 500),
         });
       }
 
-      return res.json(parsed);
+      return res.status(200).json(parsed);
     }
 
     return res.status(400).json({ error: `Unknown action: "${action}"` });
