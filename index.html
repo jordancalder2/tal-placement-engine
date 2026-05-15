@@ -631,6 +631,20 @@
   </div>
 </div>
 
+<!-- ── Student Profile Modal ─────────────── -->
+<div id="student-modal" class="modal-overlay" onclick="if(event.target===this)closeStudentModal()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="student-modal-title">Student Profile</h2>
+      <button class="modal-close" onclick="closeStudentModal()">✕</button>
+    </div>
+    <div class="modal-body" id="student-modal-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeStudentModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Loading overlay ───────────────────── -->
 <div id="loading-overlay">
   <div class="spinner"></div>
@@ -832,11 +846,11 @@ function renderStudentList() {
     return;
   }
   el.innerHTML = `<div class="student-grid">${students.map(s => `
-    <div class="card student-card">
+    <div class="card student-card" onclick="openStudentModal('${s.id}')">
       <div class="card-head">
         <div class="card-title">${esc(s._name || 'Unnamed Student')}</div>
         <div class="card-actions">
-          <button class="btn-icon danger" onclick="deleteStudent('${s.id}')">×</button>
+          <button class="btn-icon danger" onclick="event.stopPropagation();deleteStudent('${s.id}')">×</button>
         </div>
       </div>
       ${s._email ? `<p class="card-meta">${esc(s._email)}</p>` : ''}
@@ -846,7 +860,7 @@ function renderStudentList() {
           : '<span class="badge badge-gray">No resume</span>'}
       </div>
       <div style="margin-top:.625rem">
-        <button class="btn-sm" onclick="uploadResume('${s.id}')">
+        <button class="btn-sm" onclick="event.stopPropagation();uploadResume('${s.id}')">
           ${s.resumeText ? '↺ Replace Resume PDF' : '⬆ Upload Resume PDF'}
         </button>
       </div>
@@ -1297,12 +1311,65 @@ function showErr(msg) {
 }
 
 /* ═══════════════════════════════════════════
+   STUDENT PROFILE MODAL
+═══════════════════════════════════════════ */
+const INTERNAL_KEYS = new Set(['id', '_name', '_email', 'resumeText']);
+
+function openStudentModal(id) {
+  const student = dbLoad(KEYS.students, []).find(s => s.id === id);
+  if (!student) return;
+
+  document.getElementById('student-modal-title').textContent = student._name || 'Student Profile';
+
+  // Demographics block
+  const demoFields = [
+    ['Full Name', student._name],
+    ['Email',     student._email],
+  ].filter(([, v]) => v && String(v).trim());
+
+  // All questionnaire columns (original CSV data, excluding internal keys)
+  const questionnaireFields = Object.entries(student)
+    .filter(([k, v]) => !INTERNAL_KEYS.has(k) && String(v ?? '').trim());
+
+  const renderField = ([label, value]) => `
+    <div class="profile-field">
+      <div class="field-label">${esc(label)}</div>
+      <div class="field-value">${esc(String(value))}</div>
+    </div>`;
+
+  const demoHTML = demoFields.length ? `
+    <div class="profile-section">
+      <div class="profile-section-title">Demographics</div>
+      ${demoFields.map(renderField).join('')}
+    </div>` : '';
+
+  const questionnaireHTML = questionnaireFields.length ? `
+    <div class="profile-section">
+      <div class="profile-section-title">Questionnaire Answers</div>
+      ${questionnaireFields.map(renderField).join('')}
+    </div>` : '';
+
+  const resumeHTML = student.resumeText ? `
+    <div class="profile-section">
+      <div class="profile-section-title">Resume Insights</div>
+      <div class="resume-insights-box">${esc(student.resumeText)}</div>
+    </div>` : '';
+
+  document.getElementById('student-modal-body').innerHTML = demoHTML + questionnaireHTML + resumeHTML;
+  document.getElementById('student-modal').classList.add('open');
+}
+
+function closeStudentModal() {
+  document.getElementById('student-modal').classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════ */
 document.getElementById('api-key-input').value = getApiKey();
 document.getElementById('api-key-input').addEventListener('change', e => saveApiKey(e.target.value.trim()));
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeNgoModal();
+  if (e.key === 'Escape') { closeNgoModal(); closeStudentModal(); }
 });
 
 // Initial render
