@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
       if (!pdf_base64) return res.status(400).json({ error: 'pdf_base64 is required.' });
 
       const data = await callAnthropic({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 2048,
         messages: [{
           role: 'user',
@@ -266,7 +266,7 @@ Return ONLY valid JSON — no markdown fences, no commentary — in this exact s
 ngoRankings MUST contain all ${ngos.length} NGOs, sorted by score descending.`;
 
       const data = await callAnthropic({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }],
       });
