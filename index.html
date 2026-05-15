@@ -1417,8 +1417,8 @@ function openStudentModal(id) {
         <button class="btn-sm" onclick="downloadStudentRankingCsv('${id}')">⬇ Download CSV</button>
       </div>
       ${(match.ngoRankings || []).map((r, i) => {
-        const ngo      = ngos.find(n => n.id === r.ngoId);
-        const ngoName  = ngo?.name || r.ngoId;
+        const ngo      = ngos.find(n => n.id === r.ngoId) || ngos.find(n => n.name === r.ngoId);
+        const ngoName  = ngo?.name || r.ngoName || r.ngoId;
         const scoreCls = r.score >= 75 ? 'score-high' : r.score >= 55 ? 'score-mid' : 'score-low';
         return `<div class="ranking-row">
           <span class="rank-num">#${i + 1}</span>
