@@ -978,18 +978,23 @@ async function runMatching() {
   if (!students.length) return showErr('No students loaded. Upload a questionnaire CSV first.');
   if (!ngos.length) return showErr('No NGOs in the library. Add some NGOs first.');
 
-  showLoading(`Matching ${students.length} students against ${ngos.length} NGOs — this may take a minute…`);
-  try {
-    const result = await claudeCall({ action: 'match', students, ngos });
-    dbSave(KEYS.results, result);
-    renderResults();
-    showPanel('results');
-    toast('Matching complete');
-  } catch (err) {
-    showErr(err.message);
-  } finally {
-    hideLoading();
+  const matches = [];
+  for (let i = 0; i < students.length; i++) {
+    const s = students[i];
+    showLoading(`Matching student ${i + 1} of ${students.length}: ${s._name || ''}…`);
+    try {
+      const result = await claudeCall({ action: 'match', student: s, ngos });
+      matches.push(result);
+    } catch (err) {
+      hideLoading();
+      return showErr(`Error matching ${s._name || 'student'}: ${err.message}`);
+    }
   }
+  dbSave(KEYS.results, { matches });
+  hideLoading();
+  renderResults();
+  showPanel('results');
+  toast('Matching complete');
 }
 
 function renderResults() {
