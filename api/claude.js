@@ -91,13 +91,54 @@ module.exports = async function handler(req, res) {
         ].filter(Boolean).join('\n');
       };
 
+      const condenseWorkPlan = text => {
+        if (!text || text.length <= 400) return text;
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+        // Extract week headings and their inline themes (e.g. "Week 2 – Community outreach")
+        const weekLines = lines.filter(l =>
+          /^(week\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten))/i.test(l)
+        );
+        const weekThemes = weekLines
+          .map(l => l.replace(/^week\s+\S+\s*[:–—\-]?\s*/i, '').trim())
+          .filter(t => t.length > 3)
+          .slice(0, 6);
+
+        // Extract bullet-point activities
+        const bullets = lines
+          .filter(l => /^[•\-\*–►▸]/.test(l))
+          .map(l => l.replace(/^[•\-\*–►▸]\s*/, '').trim())
+          .filter(l => l.length > 8)
+          .slice(0, 5);
+
+        const parts = [];
+
+        if (weekThemes.length >= 2) {
+          parts.push(`Weekly themes: ${weekThemes.join(', ')}.`);
+        } else if (weekLines.length >= 2) {
+          parts.push(`Structured across ${weekLines.length} weeks.`);
+        }
+
+        if (bullets.length >= 2) {
+          parts.push(`Key activities: ${bullets.slice(0, 4).join('; ')}.`);
+        }
+
+        if (!parts.length) {
+          // Fall back to first two meaningful sentences
+          const sentences = (text.match(/[^.!?\n]{15,}[.!?]/g) || []).slice(0, 2);
+          parts.push(sentences.length ? sentences.join(' ') : text.slice(0, 400) + '…');
+        }
+
+        return parts.join(' ');
+      };
+
       const fmtNgo = n => [
         `ID: ${n.id}`,
         `Name: ${n.name}`,
         n.description  ? `Description: ${n.description}` : '',
         n.studentRoles ? `Student Roles: ${n.studentRoles}` : '',
         n.hrConnection ? `Human Rights Connection: ${n.hrConnection}` : '',
-        n.workPlan     ? `Work Plan:\n${n.workPlan}` : '',
+        n.workPlan     ? `Work Plan: ${condenseWorkPlan(n.workPlan)}` : '',
         `Maturity Sensitive: ${n.maturitySensitive
           ? 'YES — only suitable for students who explicitly express comfort with trauma, GBV, or sensitive content'
           : 'No'}`,
