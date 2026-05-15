@@ -620,6 +620,7 @@
 <!-- ── Toast ─────────────────────────────── -->
 <div id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 <script>
 /* ═══════════════════════════════════════════
    STORAGE
@@ -1154,26 +1155,8 @@ async function claudeCall(body) {
    UTILITIES
 ═══════════════════════════════════════════ */
 function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return [];
-  const parseRow = line => {
-    const vals = []; let cur = '', inQ = false;
-    for (const c of line) {
-      if (c === '"') { inQ = !inQ; continue; }
-      if (c === ',' && !inQ) { vals.push(cur.trim()); cur = ''; continue; }
-      cur += c;
-    }
-    vals.push(cur.trim());
-    return vals;
-  };
-  const headers = parseRow(lines[0]);
-  return lines.slice(1).map(line => {
-    if (!line.trim()) return null;
-    const vals = parseRow(line);
-    const obj = {};
-    headers.forEach((h, i) => { obj[h.trim()] = (vals[i] || '').trim(); });
-    return obj;
-  }).filter(Boolean);
+  const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+  return result.data;
 }
 
 // Returns the first matching key from a row object
