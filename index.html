@@ -484,6 +484,33 @@
       padding: .875rem 1rem; font-size: .82rem; color: var(--g800);
       line-height: 1.65; white-space: pre-wrap; word-break: break-word;
     }
+    .modal-box.modal-wide { max-width: 760px; }
+
+    /* ── Results redesign ───────────────────── */
+    .results-progress {
+      background: var(--white); border-radius: var(--rl);
+      box-shadow: var(--sh); padding: .875rem 1.125rem;
+      margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem;
+    }
+    .results-progress-label { font-size: .875rem; font-weight: 600; color: var(--g800); white-space: nowrap; }
+    .progress-bar-track {
+      flex: 1; height: 8px; background: var(--g100);
+      border-radius: 20px; overflow: hidden; min-width: 60px;
+    }
+    .progress-bar-fill { height: 100%; background: var(--teal); border-radius: 20px; transition: width .3s; }
+    .results-student-row {
+      background: var(--white); border-radius: var(--r);
+      box-shadow: var(--sh); padding: .75rem 1rem;
+      margin-bottom: .5rem; display: flex; align-items: center;
+      gap: .75rem; flex-wrap: wrap;
+    }
+    .results-student-name {
+      font-size: .9rem; font-weight: 600; cursor: pointer;
+      color: var(--purple); flex: 1; min-width: 120px;
+    }
+    .results-student-name:hover { text-decoration: underline; }
+    .results-student-meta { font-size: .78rem; color: var(--g400); min-width: 80px; }
+    .results-row-actions { display: flex; gap: .375rem; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -558,7 +585,7 @@
         <div class="panel-header">
           <h1>Results</h1>
           <div class="panel-actions">
-            <button class="btn btn-teal" onclick="runMatching()">▶ Run AI Matching</button>
+            <button class="btn btn-teal" onclick="runAllMatching()">▶ Run All Remaining</button>
           </div>
         </div>
         <div id="results-content"></div>
@@ -971,88 +998,105 @@ function clearStudents() {
 /* ═══════════════════════════════════════════
    RESULTS
 ═══════════════════════════════════════════ */
-async function runMatching() {
-  const students = dbLoad(KEYS.students, []);
-  const ngos = dbLoad(KEYS.ngos, []);
+async function runStudentMatch(studentId) {
   if (!requireApiKey()) return;
-  if (!students.length) return showErr('No students loaded. Upload a questionnaire CSV first.');
-  if (!ngos.length) return showErr('No NGOs in the library. Add some NGOs first.');
+  const students = dbLoad(KEYS.students, []);
+  const ngos     = dbLoad(KEYS.ngos, []);
+  const student  = students.find(s => s.id === studentId);
+  if (!student) return;
+  if (!ngos.length) return showErr('No NGOs in the library.');
 
-  const matches = [];
-  for (let i = 0; i < students.length; i++) {
-    const s = students[i];
-    showLoading(`Matching student ${i + 1} of ${students.length}: ${s._name || ''}…`);
+  showLoading(`Matching ${student._name || 'student'}…`);
+  try {
+    const result = await claudeCall({ action: 'match', student, ngos });
+    const stored = dbLoad(KEYS.results, { matches: [] });
+    const idx = stored.matches.findIndex(m => m.studentId === studentId);
+    if (idx >= 0) stored.matches[idx] = result; else stored.matches.push(result);
+    dbSave(KEYS.results, stored);
+    renderResults();
+    toast(`${student._name || 'Student'} matched`);
+  } catch (err) {
+    showErr(err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function runAllMatching() {
+  if (!requireApiKey()) return;
+  const students = dbLoad(KEYS.students, []);
+  const ngos     = dbLoad(KEYS.ngos, []);
+  if (!students.length) return showErr('No students loaded. Upload a questionnaire CSV first.');
+  if (!ngos.length)     return showErr('No NGOs in the library. Add some NGOs first.');
+
+  const stored     = dbLoad(KEYS.results, { matches: [] });
+  const matchedIds = new Set(stored.matches.map(m => m.studentId));
+  const remaining  = students.filter(s => !matchedIds.has(s.id));
+  if (!remaining.length) return toast('All students already matched.');
+
+  for (let i = 0; i < remaining.length; i++) {
+    const s = remaining[i];
+    showLoading(`Matching student ${i + 1} of ${remaining.length}: ${s._name || ''}…`);
     try {
       const result = await claudeCall({ action: 'match', student: s, ngos });
-      matches.push(result);
+      stored.matches.push(result);
+      dbSave(KEYS.results, stored);
+      renderResults();
     } catch (err) {
       hideLoading();
       return showErr(`Error matching ${s._name || 'student'}: ${err.message}`);
     }
   }
-  dbSave(KEYS.results, { matches });
   hideLoading();
-  renderResults();
-  showPanel('results');
-  toast('Matching complete');
+  toast('All remaining students matched');
 }
 
 function renderResults() {
   const results  = dbLoad(KEYS.results, null);
   const students = dbLoad(KEYS.students, []);
-  const ngos     = dbLoad(KEYS.ngos, []);
-  const el = document.getElementById('results-content');
+  const el       = document.getElementById('results-content');
+  const matches  = results?.matches || [];
 
-  if (!results || !results.matches?.length) {
+  if (!students.length) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-state-icon">📊</div>
-      <div>No results yet. Load students &amp; NGOs, then click <strong>Run AI Matching</strong>.</div>
+      <div>No students loaded. Upload a questionnaire CSV first.</div>
     </div>`;
     return;
   }
 
-  el.innerHTML = results.matches.map((m, mi) => {
-    const student = students.find(s => s.id === m.studentId);
-    const name = student?._name || m.studentId;
-    const blockId = `rb-${mi}`;
+  const total   = students.length;
+  const matched = matches.length;
+  const pct     = total ? Math.round((matched / total) * 100) : 0;
+
+  let html = `
+    <div class="results-progress">
+      <span class="results-progress-label">${matched} of ${total} students matched</span>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" style="width:${pct}%"></div>
+      </div>
+      <span style="font-size:.78rem;color:var(--g400);white-space:nowrap">${pct}%</span>
+    </div>`;
+
+  html += students.map(s => {
+    const match       = matches.find(m => m.studentId === s.id);
+    const nationality = s['Nationality'] || s['nationality'] || s['Q_nationality'] || '';
+    const statusBadge = match
+      ? '<span class="badge badge-teal badge-sm">✓ Matched</span>'
+      : '<span class="badge badge-gray badge-sm">Not matched</span>';
+    const actionBtn = match
+      ? `<button class="btn-sm" onclick="openStudentModal('${s.id}')">View Results</button>`
+      : `<button class="btn-sm" onclick="runStudentMatch('${s.id}')">Run Match</button>`;
     return `
-      <div class="result-block" id="${blockId}">
-        <div class="result-student-head" onclick="toggleResult('${blockId}')">
-          <span>${esc(name)}</span>
-          <span class="chev">▼</span>
-        </div>
-        <div class="result-rankings">
-          ${(m.ngoRankings || []).map((r, i) => {
-            const ngo = ngos.find(n => n.id === r.ngoId);
-            const ngoName = ngo?.name || r.ngoId;
-            const scoreCls = r.score >= 75 ? 'score-high' : r.score >= 55 ? 'score-mid' : 'score-low';
-            return `
-              <div class="ranking-row">
-                <span class="rank-num">#${i+1}</span>
-                <div class="rank-details">
-                  <div class="rank-ngo-name">
-                    ${esc(ngoName)}
-                    ${ngo?.maturitySensitive ? '&nbsp;<span class="badge badge-coral badge-sm">M</span>' : ''}
-                  </div>
-                  <div class="rank-reasons">
-                    ${(r.reasons || []).map(reason => `<div class="rank-reason">• ${esc(reason)}</div>`).join('')}
-                  </div>
-                </div>
-                <span></span>
-                <span class="score-chip ${scoreCls}">${r.score}</span>
-              </div>`;
-          }).join('')}
-        </div>
+      <div class="results-student-row">
+        <div class="results-student-name" onclick="openStudentModal('${s.id}')">${esc(s._name || 'Unnamed')}</div>
+        ${nationality ? `<div class="results-student-meta">${esc(nationality)}</div>` : ''}
+        ${statusBadge}
+        <div class="results-row-actions">${actionBtn}</div>
       </div>`;
   }).join('');
 
-  // Auto-open first result
-  const first = document.getElementById('rb-0');
-  if (first) first.classList.add('open');
-}
-
-function toggleResult(id) {
-  document.getElementById(id).classList.toggle('open');
+  el.innerHTML = html;
 }
 
 /* ═══════════════════════════════════════════
@@ -1063,7 +1107,8 @@ function generatePlacement() {
   const students = dbLoad(KEYS.students, []);
   const ngos     = dbLoad(KEYS.ngos, []);
 
-  if (!results) return showErr('Run AI Matching first before generating a placement.');
+  if (!results?.matches?.length) return showErr('Run AI Matching first before generating a placement.');
+  if (results.matches.length < 2) return showErr('Match at least 2 students before generating a Group Placement.');
 
   // Build assignments map: ngoId -> []
   const assignments = {};
@@ -1360,12 +1405,65 @@ function openStudentModal(id) {
       <div class="resume-insights-box">${esc(student.resumeText)}</div>
     </div>` : '';
 
-  document.getElementById('student-modal-body').innerHTML = demoHTML + questionnaireHTML + resumeHTML;
+  // NGO rankings (if this student has been matched)
+  const results = dbLoad(KEYS.results, null);
+  const match   = results?.matches?.find(m => m.studentId === id);
+  const ngos    = dbLoad(KEYS.ngos, []);
+
+  const rankingsHTML = match ? `
+    <div class="profile-section">
+      <div class="profile-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+        <span>NGO Rankings (${(match.ngoRankings || []).length})</span>
+        <button class="btn-sm" onclick="downloadStudentRankingCsv('${id}')">⬇ Download CSV</button>
+      </div>
+      ${(match.ngoRankings || []).map((r, i) => {
+        const ngo      = ngos.find(n => n.id === r.ngoId);
+        const ngoName  = ngo?.name || r.ngoId;
+        const scoreCls = r.score >= 75 ? 'score-high' : r.score >= 55 ? 'score-mid' : 'score-low';
+        return `<div class="ranking-row">
+          <span class="rank-num">#${i + 1}</span>
+          <div class="rank-details">
+            <div class="rank-ngo-name">${esc(ngoName)}${ngo?.maturitySensitive ? ' <span class="badge badge-coral badge-sm">M</span>' : ''}</div>
+            <div class="rank-reasons">${(r.reasons || []).map(reason => `<div class="rank-reason">• ${esc(reason)}</div>`).join('')}</div>
+          </div>
+          <span></span>
+          <span class="score-chip ${scoreCls}">${r.score}</span>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
+  const modalBox = document.getElementById('student-modal').querySelector('.modal-box');
+  modalBox.style.maxWidth = match ? '760px' : '580px';
+
+  document.getElementById('student-modal-body').innerHTML = demoHTML + questionnaireHTML + resumeHTML + rankingsHTML;
   document.getElementById('student-modal').classList.add('open');
 }
 
 function closeStudentModal() {
   document.getElementById('student-modal').classList.remove('open');
+}
+
+function downloadStudentRankingCsv(studentId) {
+  const results  = dbLoad(KEYS.results, null);
+  const ngos     = dbLoad(KEYS.ngos, []);
+  const students = dbLoad(KEYS.students, []);
+  const student  = students.find(s => s.id === studentId);
+  const match    = results?.matches?.find(m => m.studentId === studentId);
+  if (!match) return;
+
+  const rows = [['Rank', 'NGO Name', 'Score', 'Reasons']];
+  (match.ngoRankings || []).forEach((r, i) => {
+    const ngo = ngos.find(n => n.id === r.ngoId);
+    rows.push([i + 1, ngo?.name || r.ngoId, r.score, (r.reasons || []).join(' | ')]);
+  });
+
+  const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `${(student?._name || 'student').replace(/\s+/g, '_')}_rankings.csv`;
+  a.click();
+  toast('CSV downloaded');
 }
 
 /* ═══════════════════════════════════════════
