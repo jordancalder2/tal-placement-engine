@@ -294,6 +294,87 @@ ngoRankings MUST contain all ${ngos.length} NGOs, sorted by score descending.`;
       return res.status(200).json(parsed);
     }
 
+    // ── action: group_placement ─────────────────
+    if (action === 'group_placement') {
+      const { students, ngos, matches } = rest;
+      if (!Array.isArray(students) || !Array.isArray(ngos) || !Array.isArray(matches)) {
+        return res.status(400).json({ error: 'students, ngos, and matches arrays are required.' });
+      }
+
+      const fmtStudent = s => {
+        const match = matches.find(m => m.studentId === s.id);
+        const nat   = s['Nationality'] || s['nationality'] || '';
+        const rankings = (match?.ngoRankings || [])
+          .map((r, i) => {
+            const ngo = ngos.find(n => n.id === r.ngoId);
+            return `  #${i + 1} ${ngo?.name || r.ngoId} (${r.score})`;
+          }).join('\n');
+        return [
+          `Student: ${s._name || 'Unknown'} (id: ${s.id})`,
+          nat ? `Nationality: ${nat}` : '',
+          rankings ? `Rankings:\n${rankings}` : '(no rankings)',
+        ].filter(Boolean).join('\n');
+      };
+
+      const prompt = `You are the TAL (Take Action Lab) programme coordinator placing ${students.length} US university students at NGOs in Cape Town, South Africa.
+
+Your task: assign each student to exactly one NGO, producing an optimal group placement.
+
+━━━ ASSIGNMENT RULES ━━━
+1. Maximum 2 students per NGO
+2. Start with each student's highest-scored NGO. If that NGO is full, move to their next ranked option.
+3. When 3+ students want the same NGO, keep the 2 with the highest individual scores for that NGO; push others to their next best option.
+4. Fallback chain per student: Rank 1 → Rank 2 → Rank 3 → any NGO the student scored 80+
+5. CRITICAL: Eoan Group and Centre of Excellence may ONLY receive a student if it is that student's rank #1. Never use as fallback.
+6. If a student cannot be placed in their top 3 or any 80+ org, assign them to their next-best available option and set status "manual_review" with a note explaining why.
+7. Use as many of the ${ngos.length} NGOs as possible, but never assign an org scored below 65 unless no better option exists.
+8. Think holistically — resolve conflicts by considering the full cohort, not greedily one-at-a-time.
+
+━━━ STUDENTS AND RANKINGS ━━━
+${students.map(fmtStudent).join('\n\n---\n\n')}
+
+━━━ NGOs ━━━
+${ngos.map(n => `${n.name} (id: ${n.id})${n.maturitySensitive ? ' [MATURITY SENSITIVE]' : ''}`).join('\n')}
+
+Return ONLY valid JSON — no markdown fences, no commentary:
+{
+  "placements": [
+    {
+      "studentId": "exact id string",
+      "ngoId": "exact id string",
+      "matchRank": 1,
+      "score": 87,
+      "justification": "1-2 sentences explaining why this is a good match",
+      "notes": "concerns, flags, or empty string",
+      "status": "top3"
+    }
+  ]
+}
+
+Rules for the status field:
+- "top3"          — student is placed at their rank 1, 2, or 3 NGO
+- "fallback"      — student is placed at an NGO scored 80+ but outside their top 3
+- "manual_review" — student could not be placed in top 3 or any 80+ org
+
+Include ALL ${students.length} students exactly once. Each student must appear in exactly one placement.`;
+
+      const data = await callAnthropic({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const text = stripFences(data.content[0].text);
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return res.status(500).json({ error: 'Claude returned non-JSON output. Try again.', raw: text.slice(0, 500) });
+      }
+
+      return res.json(parsed);
+    }
+
     return res.status(400).json({ error: `Unknown action: "${action}"` });
 
   } catch (err) {
