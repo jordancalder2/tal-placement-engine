@@ -658,7 +658,7 @@
           <h1>Group Placement</h1>
           <div class="panel-actions">
             <button class="btn btn-ghost" onclick="exportPlacement()">⬇ Export CSV</button>
-            <button class="btn btn-primary" onclick="generatePlacement()">⚡ AI Group Placement</button>
+            <button class="btn btn-primary" onclick="generatePlacement()">⚡ Generate Placement</button>
           </div>
         </div>
         <div id="placement-content"></div>
@@ -1161,41 +1161,74 @@ function renderResults() {
 /* ═══════════════════════════════════════════
    GROUP PLACEMENT
 ═══════════════════════════════════════════ */
-let _placementView = 'student';
 let _placementSort = { col: 'rank', dir: 'asc' };
 
-async function generatePlacement() {
+// Orgs that may only receive a student if they are that student's rank #1
+const RANK1_ONLY_ORGS = ['eoan group', 'centre of excellence'];
+
+function generatePlacement() {
   const results  = dbLoad(KEYS.results, null);
   const students = dbLoad(KEYS.students, []);
   const ngos     = dbLoad(KEYS.ngos, []);
 
   if (!results?.matches?.length) return showErr('Run AI Matching first before generating a placement.');
   if (results.matches.length < 2) return showErr('Match at least 2 students before generating a Group Placement.');
-  if (!requireApiKey()) return;
 
-  const matchedIds = new Set(results.matches.map(m => m.studentId));
-  const matched    = students.filter(s => matchedIds.has(s.id));
+  // Sort students by top score descending so best matches get first pick
+  const sorted = [...results.matches].sort(
+    (a, b) => (b.ngoRankings[0]?.score || 0) - (a.ngoRankings[0]?.score || 0)
+  );
 
-  // Strip to top 5 per student (name+score only) to keep the API payload small
-  const slimMatches = results.matches.map(m => ({
-    studentId: m.studentId,
-    top5: (m.ngoRankings || []).slice(0, 5).map(r => {
+  const slots = {};  // ngoId -> [studentId, ...]
+  ngos.forEach(n => { slots[n.id] = []; });
+
+  const placements = [];
+
+  for (const m of sorted) {
+    const rankings = m.ngoRankings || [];
+    let placed = false;
+
+    // Try ranks 1-3 first
+    for (let i = 0; i < Math.min(3, rankings.length); i++) {
+      const r   = rankings[i];
       const ngo = ngos.find(n => n.id === r.ngoId);
-      return { ngoId: r.ngoId, ngoName: ngo?.name || r.ngoId, score: r.score };
-    }),
-  }));
+      if (!ngo) continue;
+      const isRank1Only = RANK1_ONLY_ORGS.some(name => ngo.name.toLowerCase().includes(name));
+      if (isRank1Only && i !== 0) continue;  // skip if not rank 1
+      if ((slots[r.ngoId] || []).length < 2) {
+        slots[r.ngoId].push(m.studentId);
+        placements.push({ studentId: m.studentId, ngoId: r.ngoId, matchRank: i + 1, score: r.score, status: 'top3' });
+        placed = true;
+        break;
+      }
+    }
 
-  showLoading(`Generating group placement for ${matched.length} students…`);
-  try {
-    const result = await claudeCall({ action: 'group_placement', students: matched, ngos, matches: slimMatches });
-    dbSave(KEYS.placement, { placements: result.placements, generatedAt: Date.now() });
-    renderPlacement();
-    toast('Group placement generated');
-  } catch (err) {
-    showErr(err.message);
-  } finally {
-    hideLoading();
+    // Fallback: any org scored 80+ with a free slot
+    if (!placed) {
+      const fallbacks = rankings.filter(r => r.score >= 80).slice(3);
+      for (const r of fallbacks) {
+        const ngo = ngos.find(n => n.id === r.ngoId);
+        if (!ngo) continue;
+        const isRank1Only = RANK1_ONLY_ORGS.some(name => ngo.name.toLowerCase().includes(name));
+        if (isRank1Only) continue;
+        if ((slots[r.ngoId] || []).length < 2) {
+          const rank = rankings.findIndex(x => x.ngoId === r.ngoId) + 1;
+          slots[r.ngoId].push(m.studentId);
+          placements.push({ studentId: m.studentId, ngoId: r.ngoId, matchRank: rank, score: r.score, status: 'fallback' });
+          placed = true;
+          break;
+        }
+      }
+    }
+
+    if (!placed) {
+      placements.push({ studentId: m.studentId, ngoId: null, matchRank: null, score: null, status: 'manual_review' });
+    }
   }
+
+  dbSave(KEYS.placement, { placements, generatedAt: Date.now() });
+  renderPlacement();
+  toast('Group placement generated');
 }
 
 function renderPlacement() {
@@ -1207,7 +1240,7 @@ function renderPlacement() {
   if (!placement?.placements?.length) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-state-icon">📌</div>
-      <div>Run <strong>AI Matching</strong> first, then click <strong>AI Group Placement</strong>.</div>
+      <div>Run <strong>AI Matching</strong> first, then click <strong>Generate Placement</strong>.</div>
     </div>`;
     return;
   }
@@ -1215,102 +1248,64 @@ function renderPlacement() {
   const { placements } = placement;
   const sName = id => students.find(s => s.id === id)?._name || id;
   const sNat  = id => { const s = students.find(s => s.id === id); return s?.['Nationality'] || s?.['nationality'] || ''; };
-  const nName = id => ngos.find(n => n.id === id)?.name || id;
+  const nName = id => id ? (ngos.find(n => n.id === id)?.name || id) : '—';
 
   const top3Count = placements.filter(p => p.status === 'top3').length;
   const fbCount   = placements.filter(p => p.status === 'fallback').length;
   const revCount  = placements.filter(p => p.status === 'manual_review').length;
-  const orgsUsed  = new Set(placements.map(p => p.ngoId)).size;
+  const orgsUsed  = new Set(placements.filter(p => p.ngoId).map(p => p.ngoId)).size;
 
   const statsHTML = `
     <div class="placement-stats">
-      <span class="stat-chip stat-top3">${top3Count} in top 3</span>
-      ${fbCount  ? `<span class="stat-chip stat-fallback">${fbCount} fallback</span>` : ''}
-      ${revCount ? `<span class="stat-chip stat-review">${revCount} need review</span>` : ''}
+      <span class="stat-chip stat-top3">${top3Count} placed in top 3</span>
+      ${fbCount  ? `<span class="stat-chip stat-fallback">${fbCount} 80+ fallback</span>` : ''}
+      ${revCount ? `<span class="stat-chip stat-review">${revCount} manual review</span>` : ''}
       <span class="stat-chip stat-orgs">${orgsUsed} of ${ngos.length} orgs used</span>
     </div>`;
 
-  const viewToggle = `
-    <div class="view-toggle">
-      <button class="view-btn${_placementView === 'student' ? ' active' : ''}" onclick="setPlacementView('student')">Student view</button>
-      <button class="view-btn${_placementView === 'org' ? ' active' : ''}" onclick="setPlacementView('org')">Org view</button>
-    </div>`;
+  const sorted = [...placements].sort((a, b) => {
+    let va, vb;
+    switch (_placementSort.col) {
+      case 'name':  va = sName(a.studentId); vb = sName(b.studentId); break;
+      case 'nat':   va = sNat(a.studentId);  vb = sNat(b.studentId);  break;
+      case 'org':   va = nName(a.ngoId);     vb = nName(b.ngoId);     break;
+      case 'rank':  va = a.matchRank ?? 99;  vb = b.matchRank ?? 99;  break;
+      case 'score': va = a.score ?? 0;       vb = b.score ?? 0;       break;
+      default:      va = a.matchRank ?? 99;  vb = b.matchRank ?? 99;
+    }
+    const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
+    return _placementSort.dir === 'asc' ? cmp : -cmp;
+  });
 
-  let viewHTML = '';
+  const si = col => _placementSort.col === col ? (_placementSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
+  const th = (col, label) => `<th onclick="sortPlacement('${col}')">${label}${si(col)}</th>`;
 
-  if (_placementView === 'student') {
-    const sorted = [...placements].sort((a, b) => {
-      let va, vb;
-      switch (_placementSort.col) {
-        case 'name':  va = sName(a.studentId); vb = sName(b.studentId); break;
-        case 'nat':   va = sNat(a.studentId);  vb = sNat(b.studentId);  break;
-        case 'org':   va = nName(a.ngoId);     vb = nName(b.ngoId);     break;
-        case 'rank':  va = a.matchRank;        vb = b.matchRank;        break;
-        case 'score': va = a.score;            vb = b.score;            break;
-        default:      va = a.matchRank;        vb = b.matchRank;
-      }
-      const cmp = typeof va === 'number' ? va - vb : String(va ?? '').localeCompare(String(vb ?? ''));
-      return _placementSort.dir === 'asc' ? cmp : -cmp;
-    });
+  const statusLabel = s => s === 'top3' ? 'Top 3' : s === 'fallback' ? '80+ fallback' : 'Manual Review';
 
-    const si = col => _placementSort.col === col ? (_placementSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
-    const th = (col, label) => `<th onclick="sortPlacement('${col}')">${label}${si(col)}</th>`;
+  const rows = sorted.map(p => {
+    const rowCls   = p.status === 'top3' ? 'row-top3' : p.status === 'fallback' ? 'row-fallback' : 'row-review';
+    const scoreCls = p.score >= 75 ? 'score-high' : p.score >= 55 ? 'score-mid' : 'score-low';
+    return `<tr class="${rowCls}">
+      <td><strong>${esc(sName(p.studentId))}</strong></td>
+      <td>${esc(sNat(p.studentId))}</td>
+      <td>${esc(nName(p.ngoId))}</td>
+      <td style="text-align:center">${p.matchRank ? '#' + p.matchRank : '—'}</td>
+      <td style="text-align:center">${p.score != null ? `<span class="score-chip ${scoreCls}" style="font-size:.72rem;padding:1px 7px">${p.score}</span>` : '—'}</td>
+      <td>${esc(statusLabel(p.status))}</td>
+    </tr>`;
+  }).join('');
 
-    const rows = sorted.map(p => {
-      const rowCls   = p.status === 'top3' ? 'row-top3' : p.status === 'fallback' ? 'row-fallback' : 'row-review';
-      const scoreCls = p.score >= 75 ? 'score-high' : p.score >= 55 ? 'score-mid' : 'score-low';
-      const noteColor = (p.notes && p.notes !== '—') ? 'var(--coral)' : 'var(--g400)';
-      return `<tr class="${rowCls}">
-        <td><strong>${esc(sName(p.studentId))}</strong></td>
-        <td>${esc(sNat(p.studentId))}</td>
-        <td>${esc(nName(p.ngoId))}</td>
-        <td style="text-align:center">#${p.matchRank ?? '—'}</td>
-        <td style="text-align:center"><span class="score-chip ${scoreCls}" style="font-size:.72rem;padding:1px 7px">${p.score ?? '—'}</span></td>
-        <td class="placement-justification">${esc(p.justification || '')}</td>
-        <td class="placement-notes" style="color:${noteColor}">${esc(p.notes || '—')}</td>
-      </tr>`;
-    }).join('');
+  const tableHTML = `<div style="overflow-x:auto;margin-top:.75rem">
+    <table class="placement-table">
+      <thead><tr>
+        ${th('name','Student Name')}${th('nat','Nationality')}${th('org','Assigned Org')}${th('rank','Rank')}${th('score','Score')}${th('status','Status')}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 
-    viewHTML = `<div style="overflow-x:auto;margin-top:.75rem">
-      <table class="placement-table">
-        <thead><tr>
-          ${th('name','Student')}${th('nat','Nationality')}${th('org','Assigned Org')}${th('rank','Rank')}${th('score','Score')}<th>Justification</th><th>Notes / Flags</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-  } else {
-    const orgMap = {};
-    placements.forEach(p => { (orgMap[p.ngoId] = orgMap[p.ngoId] || []).push(p); });
-
-    const cards = ngos.map(ngo => {
-      const assigned = orgMap[ngo.id] || [];
-      if (!assigned.length) return '';
-      return `<div class="org-placement-card">
-        <div class="org-placement-name">${esc(ngo.name)}${ngo.maturitySensitive ? ' <span class="badge badge-coral badge-sm">M</span>' : ''}</div>
-        ${assigned.map(p => {
-          const bc = p.status === 'top3' ? 'badge-teal' : p.status === 'fallback' ? 'badge-amber' : 'badge-coral';
-          return `<div class="org-student-slot">
-            <div>
-              <div style="font-weight:600;font-size:.85rem">${esc(sName(p.studentId))}</div>
-              <div style="font-size:.72rem;color:var(--g400)">${esc(sNat(p.studentId))} · Rank #${p.matchRank} · Score ${p.score}</div>
-              ${(p.notes && p.notes !== '—') ? `<div style="font-size:.72rem;color:var(--coral);margin-top:2px">${esc(p.notes)}</div>` : ''}
-            </div>
-            <span class="badge ${bc} badge-sm">${p.status === 'top3' ? 'Top 3' : p.status === 'fallback' ? 'Fallback' : 'Review'}</span>
-          </div>`;
-        }).join('')}
-      </div>`;
-    }).filter(Boolean).join('');
-
-    const unusedOrgs = ngos.filter(n => !orgMap[n.id]).map(n => esc(n.name)).join(', ');
-    viewHTML = `<div class="org-placement-grid" style="margin-top:.75rem">${cards}</div>
-      ${unusedOrgs ? `<p style="font-size:.78rem;color:var(--g400);margin-top:.75rem"><strong>Unused orgs:</strong> ${unusedOrgs}</p>` : ''}`;
-  }
-
-  el.innerHTML = statsHTML + viewToggle + viewHTML;
+  el.innerHTML = statsHTML + tableHTML;
 }
-
-function setPlacementView(v) { _placementView = v; renderPlacement(); }
 
 function sortPlacement(col) {
   if (_placementSort.col === col) _placementSort.dir = _placementSort.dir === 'asc' ? 'desc' : 'asc';
@@ -1326,11 +1321,12 @@ function exportPlacement() {
 
   const sName = id => students.find(s => s.id === id)?._name || id;
   const sNat  = id => { const s = students.find(s => s.id === id); return s?.['Nationality'] || s?.['nationality'] || ''; };
-  const nName = id => ngos.find(n => n.id === id)?.name || id;
+  const nName = id => id ? (ngos.find(n => n.id === id)?.name || id) : '';
+  const statusLabel = s => s === 'top3' ? 'Top 3' : s === 'fallback' ? '80+ fallback' : 'Manual Review';
 
-  const rows = [['Student', 'Nationality', 'Assigned Org', 'Match Rank', 'Score', 'Status', 'Justification', 'Notes']];
+  const rows = [['Student Name', 'Nationality', 'Assigned Org', 'Rank', 'Score', 'Status']];
   placement.placements.forEach(p => {
-    rows.push([sName(p.studentId), sNat(p.studentId), nName(p.ngoId), p.matchRank ?? '', p.score ?? '', p.status, p.justification || '', p.notes || '']);
+    rows.push([sName(p.studentId), sNat(p.studentId), nName(p.ngoId), p.matchRank ?? '', p.score ?? '', statusLabel(p.status)]);
   });
 
   const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
