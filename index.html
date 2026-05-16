@@ -1176,9 +1176,18 @@ async function generatePlacement() {
   const matchedIds = new Set(results.matches.map(m => m.studentId));
   const matched    = students.filter(s => matchedIds.has(s.id));
 
+  // Strip to top 5 per student (name+score only) to keep the API payload small
+  const slimMatches = results.matches.map(m => ({
+    studentId: m.studentId,
+    top5: (m.ngoRankings || []).slice(0, 5).map(r => {
+      const ngo = ngos.find(n => n.id === r.ngoId);
+      return { ngoId: r.ngoId, ngoName: ngo?.name || r.ngoId, score: r.score };
+    }),
+  }));
+
   showLoading(`Generating group placement for ${matched.length} students…`);
   try {
-    const result = await claudeCall({ action: 'group_placement', students: matched, ngos, matches: results.matches });
+    const result = await claudeCall({ action: 'group_placement', students: matched, ngos, matches: slimMatches });
     dbSave(KEYS.placement, { placements: result.placements, generatedAt: Date.now() });
     renderPlacement();
     toast('Group placement generated');
