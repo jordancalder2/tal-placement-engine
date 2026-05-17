@@ -344,12 +344,13 @@ status values: "top3" = placed at rank 1-3, "fallback" = placed at rank 4-5, "ma
 Include all ${students.length} students exactly once.`;
 
       const data = await callAnthropic({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 2048,
-        messages: [{ role: 'user', content: prompt }],
+        system: 'You are a placement coordinator. You respond ONLY with valid JSON arrays. Never explain, never use markdown, never add commentary. Your entire response must be parseable by JSON.parse().',
+        messages: [{ role: 'user', content: prompt }, { role: 'assistant', content: '[' }],
       });
 
-      const text = stripFences(data.content[0].text);
+      const text = '[' + stripFences(data.content[0].text);
       let parsed;
       try {
         parsed = JSON.parse(text);
