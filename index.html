@@ -658,7 +658,7 @@
           <h1>Group Placement</h1>
           <div class="panel-actions">
             <button class="btn btn-ghost" onclick="exportPlacement()">⬇ Export CSV</button>
-            <button class="btn btn-primary" onclick="generatePlacement()">⚡ Generate Placement</button>
+            <button class="btn btn-primary" onclick="generatePlacement()">⚡ AI Group Placement</button>
           </div>
         </div>
         <div id="placement-content"></div>
@@ -1164,71 +1164,59 @@ function renderResults() {
 let _placementSort = { col: 'rank', dir: 'asc' };
 
 // Orgs that may only receive a student if they are that student's rank #1
-const RANK1_ONLY_ORGS = ['eoan group', 'centre of excellence'];
-
-function generatePlacement() {
+async function generatePlacement() {
   const results  = dbLoad(KEYS.results, null);
   const students = dbLoad(KEYS.students, []);
   const ngos     = dbLoad(KEYS.ngos, []);
 
   if (!results?.matches?.length) return showErr('Run AI Matching first before generating a placement.');
   if (results.matches.length < 2) return showErr('Match at least 2 students before generating a Group Placement.');
+  if (!requireApiKey()) return;
 
-  // Sort students by top score descending so best matches get first pick
-  const sorted = [...results.matches].sort(
-    (a, b) => (b.ngoRankings[0]?.score || 0) - (a.ngoRankings[0]?.score || 0)
-  );
+  const matchedIds = new Set(results.matches.map(m => m.studentId));
+  const matched    = students.filter(s => matchedIds.has(s.id));
 
-  const slots = {};  // ngoId -> [studentId, ...]
-  ngos.forEach(n => { slots[n.id] = []; });
+  // Slim payload: top 5 name+score per student, no reasons
+  const slimMatches = results.matches.map(m => {
+    const s = students.find(st => st.id === m.studentId);
+    return {
+      studentName: s?._name || m.studentId,
+      top5: (m.ngoRankings || []).slice(0, 5).map(r => ({
+        ngoName: ngos.find(n => n.id === r.ngoId)?.name || r.ngoId,
+        score:   r.score,
+      })),
+    };
+  });
 
-  const placements = [];
+  showLoading(`Generating group placement for ${matched.length} students…`);
+  try {
+    const result = await claudeCall({
+      action:   'group_placement',
+      students: matched.map(s => ({ _name: s._name, nationality: s['Nationality'] || s['nationality'] || '' })),
+      ngos:     ngos.map(n => ({ name: n.name, maturitySensitive: n.maturitySensitive || false })),
+      matches:  slimMatches,
+    });
 
-  for (const m of sorted) {
-    const rankings = m.ngoRankings || [];
-    let placed = false;
+    // Map names back to IDs for renderPlacement()
+    const nameToStudentId = Object.fromEntries(students.map(s => [s._name?.toLowerCase(), s.id]));
+    const nameToNgoId     = Object.fromEntries(ngos.map(n => [n.name?.toLowerCase(), n.id]));
 
-    // Try ranks 1-3 first
-    for (let i = 0; i < Math.min(3, rankings.length); i++) {
-      const r   = rankings[i];
-      const ngo = ngos.find(n => n.id === r.ngoId);
-      if (!ngo) continue;
-      const isRank1Only = RANK1_ONLY_ORGS.some(name => ngo.name.toLowerCase().includes(name));
-      if (isRank1Only && i !== 0) continue;  // skip if not rank 1
-      if ((slots[r.ngoId] || []).length < 2) {
-        slots[r.ngoId].push(m.studentId);
-        placements.push({ studentId: m.studentId, ngoId: r.ngoId, matchRank: i + 1, score: r.score, status: 'top3' });
-        placed = true;
-        break;
-      }
-    }
+    const placements = (result.placements || []).map(p => ({
+      studentId: nameToStudentId[p.student_name?.toLowerCase()] || p.student_name,
+      ngoId:     p.assigned_org ? (nameToNgoId[p.assigned_org?.toLowerCase()] || null) : null,
+      matchRank: p.rank,
+      score:     p.score,
+      status:    p.status,
+    }));
 
-    // Fallback: any org scored 80+ with a free slot
-    if (!placed) {
-      const fallbacks = rankings.filter(r => r.score >= 80).slice(3);
-      for (const r of fallbacks) {
-        const ngo = ngos.find(n => n.id === r.ngoId);
-        if (!ngo) continue;
-        const isRank1Only = RANK1_ONLY_ORGS.some(name => ngo.name.toLowerCase().includes(name));
-        if (isRank1Only) continue;
-        if ((slots[r.ngoId] || []).length < 2) {
-          const rank = rankings.findIndex(x => x.ngoId === r.ngoId) + 1;
-          slots[r.ngoId].push(m.studentId);
-          placements.push({ studentId: m.studentId, ngoId: r.ngoId, matchRank: rank, score: r.score, status: 'fallback' });
-          placed = true;
-          break;
-        }
-      }
-    }
-
-    if (!placed) {
-      placements.push({ studentId: m.studentId, ngoId: null, matchRank: null, score: null, status: 'manual_review' });
-    }
+    dbSave(KEYS.placement, { placements, generatedAt: Date.now() });
+    renderPlacement();
+    toast('Group placement generated');
+  } catch (err) {
+    showErr(err.message);
+  } finally {
+    hideLoading();
   }
-
-  dbSave(KEYS.placement, { placements, generatedAt: Date.now() });
-  renderPlacement();
-  toast('Group placement generated');
 }
 
 function renderPlacement() {

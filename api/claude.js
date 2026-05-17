@@ -294,6 +294,73 @@ ngoRankings MUST contain all ${ngos.length} NGOs, sorted by score descending.`;
       return res.status(200).json(parsed);
     }
 
+    // ── action: group_placement ─────────────────
+    // students: [{_name, nationality}]
+    // ngos:     [{name, maturitySensitive}]
+    // matches:  [{studentName, top5: [{ngoName, score}]}]
+    if (action === 'group_placement') {
+      const { students, ngos, matches } = rest;
+      if (!Array.isArray(students) || !Array.isArray(ngos) || !Array.isArray(matches)) {
+        return res.status(400).json({ error: 'students, ngos, and matches arrays are required.' });
+      }
+
+      const fmtStudent = s => {
+        const match = matches.find(m => m.studentName === s._name);
+        const nat   = s.nationality ? ` [${s.nationality}]` : '';
+        const top5  = (match?.top5 || [])
+          .map((r, i) => `  ${i + 1}. ${r.ngoName} (${r.score})`)
+          .join('\n');
+        return `${s._name}${nat}\n${top5 || '  (no matches)'}`;
+      };
+
+      const prompt = `You are the TAL coordinator placing ${students.length} US university students at NGOs in Cape Town.
+
+Assign each student to exactly one NGO following these rules:
+1. Maximum 2 students per NGO
+2. Place each student at their highest-scoring available org
+3. CRITICAL: Eoan Group and Centre of Excellence may ONLY be assigned if it is that student's rank #1 — never as a fallback
+4. When conflicts arise, move lower-scoring students to their next best option — think holistically to maximise total fit scores across the whole cohort, not greedily
+5. Every student must be placed if any of their top 5 orgs has a free slot
+6. Only mark "manual_review" if the student cannot be placed in any of their top 5 orgs
+
+━━━ STUDENTS ━━━
+${students.map(fmtStudent).join('\n\n')}
+
+━━━ NGOs ━━━
+${ngos.map(n => `${n.name}${n.maturitySensitive ? ' [maturity-sensitive]' : ''}`).join('\n')}
+
+Return ONLY a JSON array — no markdown fences, no commentary:
+[
+  {
+    "student_name": "exact student name as given above",
+    "assigned_org": "exact org name or null",
+    "rank": 1,
+    "score": 87,
+    "status": "top3"
+  }
+]
+
+status values: "top3" = placed at rank 1-3, "fallback" = placed at rank 4-5, "manual_review" = could not place in top 5.
+Include all ${students.length} students exactly once.`;
+
+      const data = await callAnthropic({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const text = stripFences(data.content[0].text);
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return res.status(500).json({ error: 'Claude returned non-JSON output. Try again.', raw: text.slice(0, 500) });
+      }
+
+      const placements = Array.isArray(parsed) ? parsed : (parsed.placements || []);
+      return res.json({ placements });
+    }
+
     return res.status(400).json({ error: `Unknown action: "${action}"` });
 
   } catch (err) {
