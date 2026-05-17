@@ -353,8 +353,11 @@ Include all ${students.length} students exactly once.`;
       let parsed;
       try {
         parsed = JSON.parse(text);
-      } catch {
-        return res.status(500).json({ error: 'Claude returned non-JSON output. Try again.', raw: text.slice(0, 500) });
+      } catch (parseErr) {
+        return res.status(500).json({ 
+          error: 'JSON parse failed: ' + parseErr.message, 
+          raw: text.slice(0, 2000) 
+        });
       }
 
       const placements = Array.isArray(parsed) ? parsed : (parsed.placements || []);
