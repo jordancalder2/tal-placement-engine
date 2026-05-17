@@ -1201,7 +1201,42 @@ async function generatePlacement() {
     const nameToStudentId = Object.fromEntries(students.map(s => [s._name?.toLowerCase(), s.id]));
     const nameToNgoId     = Object.fromEntries(ngos.map(n => [n.name?.toLowerCase(), n.id]));
 
-    const placements = (result.placements || []).map(p => ({
+    // Enforce max 2 per org in JavaScript after AI response
+    const rawPlacements = result.placements || [];
+    const orgCounts = {};
+    const enforced = [];
+    
+    // First pass: accept placements that don't exceed cap
+    for (const p of rawPlacements) {
+      const org = p.assigned_org;
+      if (!org) { enforced.push({...p, status: 'manual_review'}); continue; }
+      orgCounts[org] = (orgCounts[org] || 0);
+      if (orgCounts[org] < 2) {
+        orgCounts[org]++;
+        enforced.push(p);
+      } else {
+        // Over cap - find next available org from their rankings
+        const studentMatch = results.matches.find(m => {
+          const s = students.find(st => st.id === m.studentId);
+          return s?._name?.toLowerCase() === p.student_name?.toLowerCase();
+        });
+        let placed = false;
+        if (studentMatch) {
+          for (const r of (studentMatch.ngoRankings || [])) {
+            const ngo = ngos.find(n => n.id === r.ngoId);
+            if (ngo && (orgCounts[ngo.name] || 0) < 2 && ngo.name !== org) {
+              orgCounts[ngo.name] = (orgCounts[ngo.name] || 0) + 1;
+              enforced.push({...p, assigned_org: ngo.name, score: r.score, rank: (studentMatch.ngoRankings.indexOf(r)+1), status: r.score >= 80 ? 'top3' : 'fallback'});
+              placed = true;
+              break;
+            }
+          }
+        }
+        if (!placed) enforced.push({...p, assigned_org: null, status: 'manual_review'});
+      }
+    }
+
+    const placements = enforced.map(p => ({
       studentId: nameToStudentId[p.student_name?.toLowerCase()] || p.student_name,
       ngoId:     p.assigned_org ? (nameToNgoId[p.assigned_org?.toLowerCase()] || null) : null,
       matchRank: p.rank,
