@@ -315,13 +315,19 @@ ngoRankings MUST contain all ${ngos.length} NGOs, sorted by score descending.`;
 
       const prompt = `You are the TAL coordinator placing ${students.length} US university students at NGOs in Cape Town.
 
-Assign each student to exactly one NGO following these rules:
-1. Maximum 2 students per NGO
-2. Place each student at their highest-scoring available org
-3. CRITICAL: Eoan Group and Centre of Excellence may ONLY be assigned if it is that student's rank #1 — never as a fallback
-4. When conflicts arise, move lower-scoring students to their next best option — think holistically to maximise total fit scores across the whole cohort, not greedily
-5. Every student must be placed if any of their top 5 orgs has a free slot
-6. Only mark "manual_review" if the student cannot be placed in any of their top 5 orgs
+HARD CONSTRAINTS — these cannot be broken under any circumstances:
+- MAXIMUM 2 STUDENTS PER NGO. No NGO may have more than 2 students. This is absolute.
+- Eoan Group and Centre of Excellence: ONLY assign if it is that student's rank #1. Never as fallback.
+- Each student appears exactly once in the output.
+
+PLACEMENT RULES:
+1. Place each student at their highest-scoring available org
+2. If an org already has 2 students, it is FULL — move to next best option
+3. Think holistically — swap students between orgs if it improves overall fit
+4. Every student must be placed if any of their top 3 orgs has a free slot
+5. Only mark "manual_review" if all top 3 orgs are full
+
+BEFORE RETURNING: verify that no NGO appears more than twice in your assignments. If any does, fix it.`
 
 ━━━ STUDENTS ━━━
 ${students.map(fmtStudent).join('\n\n')}
