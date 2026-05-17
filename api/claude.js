@@ -44,7 +44,7 @@ module.exports = async function handler(req, res) {
       if (!pdf_base64) return res.status(400).json({ error: 'pdf_base64 is required.' });
 
       const data = await callAnthropic({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2048,
         messages: [{
           role: 'user',
@@ -266,7 +266,7 @@ Return ONLY valid JSON — no markdown fences, no commentary — in this exact s
 ngoRankings MUST contain all ${ngos.length} NGOs, sorted by score descending.`;
 
       const data = await callAnthropic({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -350,7 +350,7 @@ status values: "top3" = placed at rank 1-3, "fallback" = placed at rank 4-5, "ma
 Include all ${students.length} students exactly once.`;
 
       const data = await callAnthropic({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2048,
         system: 'You are a placement coordinator. You respond ONLY with valid JSON arrays. Never explain, never use markdown, never add commentary. Your entire response must be parseable by JSON.parse().',
         messages: [{ role: 'user', content: prompt }, { role: 'assistant', content: '[' }],
