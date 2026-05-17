@@ -308,7 +308,7 @@ ngoRankings MUST contain all ${ngos.length} NGOs, sorted by score descending.`;
         const match = matches.find(m => m.studentName === s._name);
         const nat   = s.nationality ? ` [${s.nationality}]` : '';
         const top5  = (match?.top5 || [])
-          .map((r, i) => `  ${i + 1}. ${r.ngoName} (${r.score})`)
+          .slice(0, 3).map((r, i) => `  ${i + 1}. ${r.ngoName} (${r.score})`)
           .join('\n');
         return `${s._name}${nat}\n${top5 || '  (no matches)'}`;
       };
@@ -345,7 +345,7 @@ Include all ${students.length} students exactly once.`;
 
       const data = await callAnthropic({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
       });
 
