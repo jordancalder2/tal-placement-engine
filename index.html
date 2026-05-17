@@ -1336,8 +1336,10 @@ async function claudeCall(body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, apiKey }),
   });
-  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+  const text = await res.text().catch(() => '');
+  let data;
+  try { data = JSON.parse(text); } catch { data = { error: `HTTP ${res.status}: ${text.slice(0, 200)}` }; }
+  if (!res.ok) throw new Error(data.error || data.raw?.slice(0,300) || `API error ${res.status}`);
   return data;
 }
 
