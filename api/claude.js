@@ -327,12 +327,12 @@ PLACEMENT RULES:
 4. Every student must be placed if any of their top 3 orgs has a free slot
 5. Only mark "manual_review" if all top 3 orgs are full
 
-BEFORE RETURNING: verify that no NGO appears more than twice in your assignments. If any does, fix it.`
+BEFORE RETURNING: verify that no NGO appears more than twice in your assignments. If any does, fix it.
 
-━━━ STUDENTS ━━━
+STUDENTS:
 ${students.map(fmtStudent).join('\n\n')}
 
-━━━ NGOs ━━━
+NGOs:
 ${ngos.map(n => `${n.name}${n.maturitySensitive ? ' [maturity-sensitive]' : ''}`).join('\n')}
 
 Return ONLY a JSON array — no markdown fences, no commentary:
